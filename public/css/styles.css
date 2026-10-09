@@ -389,6 +389,16 @@ Stats grid
   }
 }
 
+.netRates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spaceXs) var(--spaceMd);
+  white-space: nowrap;
+  margin-top: var(--spaceSm);
+  font-family: var(--fontMono);
+  font-variant-numeric: tabular-nums;
+}
+
 /**************************************************************
 Footer
 ***************************************************************/

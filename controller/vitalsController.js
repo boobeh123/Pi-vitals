@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 const THERMAL_PATH = '/sys/class/thermal/thermal_zone0/temp';
 const CPU_FREQ_PATH = '/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq';
 const FAN_HWMON_DIR = '/sys/devices/platform/cooling_fan/hwmon';
+const WIFI_INTERFACE = 'wlan0';
 
 // Bits from `vcgencmd get_throttled`. Low bits are "right now", bits 16+ are "since boot".
 const THROTTLE_FLAGS = [
@@ -85,6 +86,35 @@ const getThrottling = async () => {
   }
 };
 
+// Wi-Fi signal from /proc/net/wireless and byte counters from /proc/net/dev.
+// The browser turns the byte counters into speeds by comparing two polls.
+const getNetwork = async () => {
+  try {
+    const [wirelessText, devText] = await Promise.all([
+      fs.readFile('/proc/net/wireless', 'utf8'),
+      fs.readFile('/proc/net/dev', 'utf8'),
+    ]);
+    const findLine = (text) =>
+      text.split('\n').find((line) => line.trim().startsWith(`${WIFI_INTERFACE}:`));
+
+    // wireless columns: interface, status, link quality (out of 70), signal level (dBm), ...
+    const wirelessLine = findLine(wirelessText);
+    const wireless = wirelessLine ? wirelessLine.trim().split(/\s+/) : null;
+
+    // dev columns after the interface: received bytes is 1st, transmitted bytes is 9th
+    const devFields = findLine(devText).split(':')[1].trim().split(/\s+/);
+
+    return {
+      linkPercent: wireless ? Math.round((parseFloat(wireless[2]) / 70) * 100) : null,
+      signalDbm: wireless ? parseFloat(wireless[3]) : null,
+      rxBytes: Number(devFields[0]),
+      txBytes: Number(devFields[8]),
+    };
+  } catch {
+    return null;
+  }
+};
+
 const getServiceStatus = async (serviceName) => {
   try {
     const { stdout } = await execFileAsync('systemctl', ['is-active', serviceName]);
@@ -104,13 +134,14 @@ exports.getDashboard = async (req, res) => {
 };
 
 exports.getVitals = async (req, res) => {
-  const [tempMilli, freqKhz, fan, memory, throttling, adguard] = await Promise.all([
+  const [tempMilli, freqKhz, fan, memory, throttling, adguard, network] = await Promise.all([
     readNumber(THERMAL_PATH),
     readNumber(CPU_FREQ_PATH),
     getFan(),
     getMemory(),
     getThrottling(),
     getServiceStatus('AdGuardHome'),
+    getNetwork(),
   ]);
 
   res.json({
@@ -124,5 +155,6 @@ exports.getVitals = async (req, res) => {
     memory,
     throttling,
     adguard,
+    network,
   });
 };

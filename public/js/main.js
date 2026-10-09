@@ -31,6 +31,10 @@ const uptime = document.querySelector('.uptime');
 const healthPill = document.querySelector('.healthPill');
 const healthNote = document.querySelector('.healthNote');
 const adguardPill = document.querySelector('.adguardPill');
+const wifiPill = document.querySelector('.wifiPill');
+const wifiNote = document.querySelector('.wifiNote');
+const netDown = document.querySelector('.netDown');
+const netUp = document.querySelector('.netUp');
 
 /**************************************************************
 Settings and state
@@ -47,6 +51,7 @@ const FAN_VISUAL_SCALE = 40;
 
 const tempHistory = [];
 let lastSpinRpm = 0;
+let lastNetwork = null; // previous byte counters, for working out speeds
 
 /**************************************************************
 Helpers
@@ -72,6 +77,19 @@ const formatUptime = (totalSec) => {
   const minutes = Math.floor((totalSec % 3600) / 60);
   const parts = [days && `${days}d`, (days || hours) && `${hours}h`, `${minutes}m`];
   return parts.filter(Boolean).join(' ');
+};
+
+const formatRate = (bytesPerSec) => {
+  if (bytesPerSec >= 1024 * 1024) return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`;
+  return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+};
+
+// Rough Wi-Fi signal bands in dBm (closer to 0 is stronger)
+const getSignalStatus = (dbm) => {
+  if (dbm >= -50) return { status: 'good', text: 'Excellent' };
+  if (dbm >= -65) return { status: 'good', text: 'Good' };
+  if (dbm >= -75) return { status: 'warning', text: 'Fair' };
+  return { status: 'serious', text: 'Weak' };
 };
 
 const formatAgo = (ms) => {
@@ -190,6 +208,30 @@ const renderHealth = (throttling) => {
   healthNote.textContent = 'No under-voltage or throttling since boot.';
 };
 
+const renderNetwork = (network, time) => {
+  if (!network) {
+    setPill(wifiPill, 'unknown', 'Unavailable');
+    return;
+  }
+
+  if (network.signalDbm === null) {
+    setPill(wifiPill, 'unknown', 'No Wi-Fi link');
+    wifiNote.textContent = '';
+  } else {
+    const { status, text } = getSignalStatus(network.signalDbm);
+    setPill(wifiPill, status, text);
+    wifiNote.textContent = `${network.signalDbm} dBm · ${network.linkPercent}% link quality`;
+  }
+
+  // Speed = bytes moved since the last poll / seconds since the last poll
+  if (lastNetwork) {
+    const seconds = (time - lastNetwork.time) / 1000;
+    netDown.textContent = formatRate((network.rxBytes - lastNetwork.rxBytes) / seconds);
+    netUp.textContent = formatRate((network.txBytes - lastNetwork.txBytes) / seconds);
+  }
+  lastNetwork = { time, rxBytes: network.rxBytes, txBytes: network.txBytes };
+};
+
 const renderVitals = (vitals) => {
   if (vitals.cpuTempC !== null) {
     tempValue.textContent = vitals.cpuTempC.toFixed(1);
@@ -221,6 +263,8 @@ const renderVitals = (vitals) => {
 
   const adguardRunning = vitals.adguard === 'active';
   setPill(adguardPill, adguardRunning ? 'good' : 'critical', adguardRunning ? 'Running' : `Not running (${vitals.adguard})`);
+
+  renderNetwork(vitals.network, vitals.time);
 };
 
 /**************************************************************
