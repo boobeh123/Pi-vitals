@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pi Vitals · <%= hostname %></title>
+  <link rel="stylesheet" href="/css/normalize.css">
+  <link rel="stylesheet" href="/css/styles.css">
+  <script src="/js/main.js" defer></script>
+</head>
+<body>
+  <header class="siteHeader">
+    <div class="headerInner">
+      <h1 class="siteTitle">Pi Vitals</h1>
+      <p class="hostName"><%= hostname %></p>
+      <p class="liveStatus" aria-live="polite">
+        <span class="liveDot" aria-hidden="true"></span>
+        <span class="liveText">Connecting…</span>
+      </p>
+    </div>
+  </header>
+
+  <main class="dashboard">
+    <section class="tempSection card" aria-labelledby="tempHeading">
+      <div class="tempHeader">
+        <h2 class="cardLabel" id="tempHeading">CPU temperature</h2>
+        <p class="statusPill" data-status="unknown">
+          <span class="statusIcon" aria-hidden="true">•</span>
+          <span class="statusText">Waiting</span>
+        </p>
+      </div>
+      <p class="heroValue"><span class="tempValue">--</span><span class="heroUnit">°C</span></p>
+
+      <figure class="tempChart">
+        <div class="chartFrame">
+          <svg class="sparkline" viewBox="0 0 600 140" preserveAspectRatio="none" role="img" aria-label="CPU temperature over the last 5 minutes">
+            <g class="chartGrid"></g>
+            <path class="sparkLine" d=""></path>
+            <line class="crosshair" x1="0" y1="0" x2="0" y2="140"></line>
+            <circle class="hoverDot" r="5" cx="-10" cy="-10"></circle>
+          </svg>
+          <div class="chartTooltip" hidden></div>
+        </div>
+        <figcaption class="chartCaption">Last 5 minutes · <span class="tempRange">low -- / high --</span></figcaption>
+      </figure>
+    </section>
+
+    <section class="statsGrid" aria-label="System stats">
+      <article class="card fanCard">
+        <h2 class="cardLabel">Fan</h2>
+        <div class="fanRow">
+          <svg class="fanIcon" viewBox="0 0 100 100" aria-hidden="true">
+            <circle class="fanHousing" cx="50" cy="50" r="46"></circle>
+            <g class="fanBlades">
+              <path d="M50 50 C 44 30, 52 12, 66 10 C 70 24, 62 40, 50 50 Z"></path>
+              <path d="M50 50 C 44 30, 52 12, 66 10 C 70 24, 62 40, 50 50 Z" transform="rotate(72 50 50)"></path>
+              <path d="M50 50 C 44 30, 52 12, 66 10 C 70 24, 62 40, 50 50 Z" transform="rotate(144 50 50)"></path>
+              <path d="M50 50 C 44 30, 52 12, 66 10 C 70 24, 62 40, 50 50 Z" transform="rotate(216 50 50)"></path>
+              <path d="M50 50 C 44 30, 52 12, 66 10 C 70 24, 62 40, 50 50 Z" transform="rotate(288 50 50)"></path>
+            </g>
+            <circle class="fanHub" cx="50" cy="50" r="8"></circle>
+          </svg>
+          <div>
+            <p class="statValue"><span class="fanRpm">--</span> <span class="statUnit">RPM</span></p>
+            <p class="statNote"><span class="fanPercent">--</span>% power</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2 class="cardLabel">CPU clock</h2>
+        <p class="statValue"><span class="cpuFreq">--</span> <span class="statUnit">MHz</span></p>
+        <p class="statNote">2400 MHz max</p>
+      </article>
+
+      <article class="card">
+        <h2 class="cardLabel">Load average</h2>
+        <p class="statValue loadNow">--</p>
+        <p class="statNote">5 min <span class="load5">--</span> · 15 min <span class="load15">--</span> · <span class="coreCount">--</span> cores</p>
+      </article>
+
+      <article class="card">
+        <h2 class="cardLabel">Memory</h2>
+        <p class="statValue"><span class="memUsed">--</span> <span class="statUnit">/ <span class="memTotal">--</span> GB</span></p>
+        <div class="meter" role="meter" aria-label="Memory used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="meterFill"></div>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2 class="cardLabel">Uptime</h2>
+        <p class="statValue uptime">--</p>
+      </article>
+
+      <article class="card">
+        <h2 class="cardLabel">Power &amp; throttling</h2>
+        <p class="statusPill healthPill" data-status="unknown">
+          <span class="statusIcon" aria-hidden="true">•</span>
+          <span class="statusText">Waiting</span>
+        </p>
+        <p class="statNote healthNote"></p>
+      </article>
+
+      <article class="card">
+        <h2 class="cardLabel">AdGuard Home</h2>
+        <p class="statusPill adguardPill" data-status="unknown">
+          <span class="statusIcon" aria-hidden="true">•</span>
+          <span class="statusText">Waiting</span>
+        </p>
+        <p class="statNote">DNS on port 53</p>
+      </article>
+    </section>
+  </main>
+
+  <footer class="siteFooter">
+    <p>Refreshes every 2 seconds · Raspberry Pi 5</p>
+  </footer>
+</body>
+</html>

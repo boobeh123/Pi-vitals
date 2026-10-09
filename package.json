@@ -1,0 +1,21 @@
+{
+  "name": "pi-vitals",
+  "version": "1.0.0",
+  "description": "Live vitals dashboard for a Raspberry Pi 5",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "author": "Bobby",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^18.0.6",
+    "ejs": "^3.1.10",
+    "express": "^5.2.1",
+    "helmet": "^8.3.0",
+    "morgan": "^1.12.1"
+  },
+  "private": true
+}
