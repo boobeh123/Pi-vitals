@@ -10,6 +10,7 @@ const THERMAL_PATH = '/sys/class/thermal/thermal_zone0/temp';
 const CPU_FREQ_PATH = '/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq';
 const FAN_HWMON_DIR = '/sys/devices/platform/cooling_fan/hwmon';
 const WIFI_INTERFACE = 'wlan0';
+const TOP_PROCESS_COUNT = 5;
 
 // Bits from `vcgencmd get_throttled`. Low bits are "right now", bits 16+ are "since boot".
 const THROTTLE_FLAGS = [
@@ -115,6 +116,75 @@ const getNetwork = async () => {
   }
 };
 
+// Page size and clock ticks per second, asked from the system once.
+// The Pi 5 kernel uses 16 KB pages, so assuming the usual 4 KB would under-report memory 4x.
+const systemConstantsPromise = Promise.all([
+  execFileAsync('getconf', ['PAGESIZE']),
+  execFileAsync('getconf', ['CLK_TCK']),
+]).then(([pageSize, clockTicks]) => ({
+  pageSize: Number(pageSize.stdout),
+  clockTicks: Number(clockTicks.stdout),
+}));
+
+// CPU time used so far by each process, from the previous poll
+let lastProcessSample = null;
+
+const readProcess = async (pid) => {
+  try {
+    const stat = await fs.readFile(`/proc/${pid}/stat`, 'utf8');
+    // The name sits in parentheses and can contain spaces, so split after the last ")"
+    const close = stat.lastIndexOf(')');
+    const name = stat.slice(stat.indexOf('(') + 1, close);
+    const fields = stat.slice(close + 2).split(' ');
+    // After the name: utime and stime (CPU ticks) are fields 12-13, resident pages field 22
+    return {
+      pid,
+      name,
+      ticks: Number(fields[11]) + Number(fields[12]),
+      residentPages: Number(fields[21]),
+    };
+  } catch {
+    return null; // the process exited while we were reading it
+  }
+};
+
+// Current CPU use per program, worked out from how much CPU time each process used since the last poll
+// (ps only reports an average over each process's whole life). Processes with the same name are grouped,
+// so a browser's dozen helper processes show up as one line.
+const getTopProcesses = async () => {
+  try {
+    const { pageSize, clockTicks } = await systemConstantsPromise;
+    const pids = (await fs.readdir('/proc')).filter((entry) => /^\d+$/.test(entry)); // numeric folders are processes
+    const processes = (await Promise.all(pids.map(readProcess))).filter(Boolean);
+    const now = Date.now();
+
+    const previous = lastProcessSample;
+    lastProcessSample = { time: now, ticks: new Map(processes.map((proc) => [proc.pid, proc.ticks])) };
+    if (!previous) return null; // need two samples to measure
+
+    const seconds = (now - previous.time) / 1000;
+    const groups = processes.reduce((byName, proc) => {
+      const previousTicks = previous.ticks.get(proc.pid) ?? proc.ticks; // new process: no usage counted yet
+      const group = byName.get(proc.name) || { name: proc.name, cpuPercent: 0, memoryMb: 0, count: 0 };
+      group.cpuPercent += ((proc.ticks - previousTicks) / clockTicks / seconds) * 100;
+      group.memoryMb += (proc.residentPages * pageSize) / 1024 / 1024;
+      group.count += 1;
+      return byName.set(proc.name, group);
+    }, new Map());
+
+    return [...groups.values()]
+      .sort((a, b) => b.cpuPercent - a.cpuPercent || b.memoryMb - a.memoryMb)
+      .slice(0, TOP_PROCESS_COUNT)
+      .map((group) => ({
+        ...group,
+        cpuPercent: Math.round(group.cpuPercent * 10) / 10,
+        memoryMb: Math.round(group.memoryMb),
+      }));
+  } catch {
+    return null;
+  }
+};
+
 const getServiceStatus = async (serviceName) => {
   try {
     const { stdout } = await execFileAsync('systemctl', ['is-active', serviceName]);
@@ -134,7 +204,7 @@ exports.getDashboard = async (req, res) => {
 };
 
 exports.getVitals = async (req, res) => {
-  const [tempMilli, freqKhz, fan, memory, throttling, adguard, network] = await Promise.all([
+  const [tempMilli, freqKhz, fan, memory, throttling, adguard, network, topProcesses] = await Promise.all([
     readNumber(THERMAL_PATH),
     readNumber(CPU_FREQ_PATH),
     getFan(),
@@ -142,6 +212,7 @@ exports.getVitals = async (req, res) => {
     getThrottling(),
     getServiceStatus('AdGuardHome'),
     getNetwork(),
+    getTopProcesses(),
   ]);
 
   res.json({
@@ -156,5 +227,6 @@ exports.getVitals = async (req, res) => {
     throttling,
     adguard,
     network,
+    topProcesses,
   });
 };

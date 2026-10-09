@@ -35,6 +35,7 @@ const wifiPill = document.querySelector('.wifiPill');
 const wifiNote = document.querySelector('.wifiNote');
 const netDown = document.querySelector('.netDown');
 const netUp = document.querySelector('.netUp');
+const processRows = document.querySelector('.processRows');
 
 /**************************************************************
 Settings and state
@@ -232,6 +233,39 @@ const renderNetwork = (network, time) => {
   lastNetwork = { time, rxBytes: network.rxBytes, txBytes: network.txBytes };
 };
 
+const createRow = (cells, colSpan) => {
+  const row = document.createElement('tr');
+  if (colSpan) cells[0].colSpan = colSpan;
+  row.append(...cells);
+  return row;
+};
+
+const createCell = (text, className) => {
+  const cell = document.createElement('td');
+  cell.textContent = text;
+  if (className) cell.className = className;
+  return cell;
+};
+
+const renderProcesses = (processes) => {
+  // The server needs two polls to measure CPU use, so the first response has nothing yet
+  if (!processes) {
+    processRows.replaceChildren(createRow([createCell('Measuring…', 'processEmpty')], 3));
+    return;
+  }
+
+  const rows = processes.map((proc) => {
+    const name = proc.count > 1 ? `${proc.name} ×${proc.count}` : proc.name;
+    const cpuCell = createCell(`${proc.cpuPercent.toFixed(1)}%`, 'numberCol');
+    const bar = document.createElement('span');
+    bar.className = 'cpuBar';
+    bar.style.width = `${Math.min(proc.cpuPercent, 100)}%`;
+    cpuCell.prepend(bar);
+    return createRow([createCell(name, 'processName'), cpuCell, createCell(`${proc.memoryMb} MB`, 'numberCol')]);
+  });
+  processRows.replaceChildren(...rows);
+};
+
 const renderVitals = (vitals) => {
   if (vitals.cpuTempC !== null) {
     tempValue.textContent = vitals.cpuTempC.toFixed(1);
@@ -265,6 +299,7 @@ const renderVitals = (vitals) => {
   setPill(adguardPill, adguardRunning ? 'good' : 'critical', adguardRunning ? 'Running' : `Not running (${vitals.adguard})`);
 
   renderNetwork(vitals.network, vitals.time);
+  renderProcesses(vitals.topProcesses);
 };
 
 /**************************************************************

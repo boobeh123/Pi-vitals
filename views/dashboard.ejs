@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pi Vitals · <%= hostname %></title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/css/normalize.css">
   <link rel="stylesheet" href="/css/styles.css">
   <script src="/js/main.js" defer></script>
@@ -123,6 +124,23 @@
           <span><span aria-hidden="true">↑</span><span class="visuallyHidden">Upload</span> <span class="netUp">--</span></span>
         </p>
       </article>
+    </section>
+
+    <section class="card processSection" aria-labelledby="processHeading">
+      <h2 class="cardLabel" id="processHeading">What's using the CPU</h2>
+      <table class="processTable">
+        <thead>
+          <tr>
+            <th scope="col">Program</th>
+            <th scope="col" class="numberCol">CPU</th>
+            <th scope="col" class="numberCol">Memory</th>
+          </tr>
+        </thead>
+        <tbody class="processRows">
+          <tr><td colspan="3" class="processEmpty">Measuring…</td></tr>
+        </tbody>
+      </table>
+      <p class="statNote">CPU is per core, like <code>top</code>: 100% is one core fully busy, up to 400% across the Pi's 4 cores.</p>
     </section>
   </main>
 

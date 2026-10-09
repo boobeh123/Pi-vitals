@@ -400,6 +400,64 @@ Stats grid
 }
 
 /**************************************************************
+Processes
+***************************************************************/
+.processTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.processTable th {
+  color: var(--colorTextMuted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.processTable th,
+.processTable td {
+  padding: var(--spaceSm) var(--spaceSm) var(--spaceSm) 0;
+  border-bottom: 1px solid var(--colorBorder);
+}
+
+.processTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.processTable .numberCol {
+  width: 9rem;
+  text-align: right;
+  font-family: var(--fontMono);
+  white-space: nowrap;
+}
+
+/* Bar sits behind the CPU number; 100% width = one full core */
+.processTable td.numberCol {
+  position: relative;
+}
+
+.cpuBar {
+  position: absolute;
+  top: 25%;
+  right: var(--spaceSm); /* line up with the number, inside the cell's padding */
+  height: 50%;
+  max-width: 100%;
+  background: var(--colorSeries);
+  border-radius: 3px;
+  opacity: 0.18;
+}
+
+.processName {
+  overflow-wrap: anywhere;
+  font-family: var(--fontMono);
+}
+
+.processEmpty {
+  color: var(--colorTextMuted);
+}
+
+/**************************************************************
 Footer
 ***************************************************************/
 .siteFooter {

@@ -29,6 +29,7 @@ Pi Vitals is the first project built on the Pi itself. It's a small Express app 
 * Power & throttling check: warns about under-voltage or thermal throttling, right now or since boot
 * AdGuard Home status: shows whether the DNS service is running
 * Wi-Fi card: signal strength (dBm and link quality) plus live download and upload speeds
+* What's using the CPU: the top 5 programs by current CPU use, with memory, grouped by name (like a mini `top`)
 * Refreshes every 2 seconds, with light and dark mode and a layout that works on phones
 * Respects reduced-motion settings (the fan and live indicator stop animating)
 
@@ -51,6 +52,7 @@ Everything is read straight from the Pi. No database, no outside services, and n
 | Power & throttling | `vcgencmd get_throttled` |
 | AdGuard Home | `systemctl is-active AdGuardHome` |
 | Wi-Fi signal and speeds | `/proc/net/wireless` and `/proc/net/dev` |
+| Top programs | `/proc/<pid>/stat`, compared between polls (page size and clock ticks from `getconf`) |
 
 **How the pieces fit**
 
