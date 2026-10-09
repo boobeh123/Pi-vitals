@@ -15,8 +15,7 @@
 ### Why this exists:
 I ordered & received a Raspberry Pi 5 (8GB) running Raspberry Pi OS. I had Claude assist me with updates & setting up my dev environment. 
 Afterwards I gave Claude a gift, and granted full access to the pi. Claude setup AdGuard Home & built Pi-vitals.
-
-I wanted an easy way to see what it's actually doing: how hot it runs, how hard the fan is working, and whether it's ever been short on power or throttled.
+I used the /loop command overnight and woke up to several new projects/changes. I asked for feedback on how we can improve our next /loop session. I’m excited to see how /loop & gathering a team of agents can change our workflow.
 
 Pi Vitals is the first project built on the Pi itself. It's a small Express app that reads the Pi's own hardware sensors and shows them on a live dashboard I can open from any device on my home network.
 
