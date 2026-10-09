@@ -305,6 +305,12 @@ Temperature
   visibility: hidden;
 }
 
+.latestDot {
+  fill: var(--colorSeries);
+  stroke: var(--colorSurface);
+  stroke-width: 2;
+}
+
 .hoverDot {
   fill: var(--colorSeries);
   stroke: var(--colorSurface);

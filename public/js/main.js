@@ -13,6 +13,7 @@ const chartGrid = document.querySelector('.chartGrid');
 const sparkLine = document.querySelector('.sparkLine');
 const crosshair = document.querySelector('.crosshair');
 const hoverDot = document.querySelector('.hoverDot');
+const latestDot = document.querySelector('.latestDot');
 const chartTooltip = document.querySelector('.chartTooltip');
 
 const fanRpm = document.querySelector('.fanRpm');
@@ -142,6 +143,11 @@ const renderChart = () => {
     .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
     .join(' ');
   sparkLine.setAttribute('d', pathData);
+
+  // Mark the newest reading, so the very first one is visible before there's a line
+  const latest = points[points.length - 1];
+  latestDot.setAttribute('cx', latest.x);
+  latestDot.setAttribute('cy', latest.y);
 
   const temps = tempHistory.map((sample) => sample.tempC);
   tempRange.textContent = `low ${Math.min(...temps).toFixed(1)} °C / high ${Math.max(...temps).toFixed(1)} °C`;
