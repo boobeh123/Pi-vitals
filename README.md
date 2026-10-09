@@ -9,7 +9,10 @@
 ## About The Project
 
 ### Why this exists:
-I just booted up my first Linux machine: a Raspberry Pi 5 (8GB) running Raspberry Pi OS. After getting it set up and running AdGuard Home on it, I wanted an easy way to see what it's actually doing: how hot it runs, how hard the fan is working, and whether it's ever been short on power or throttled.
+I ordered & received a Raspberry Pi 5 (8GB) running Raspberry Pi OS. I had Claude assist me with updates & setting up my dev environment. 
+Afterwards I gave Claude a gift, and granted full access to the pi. Claude setup AdGuard Home & built Pi-vitals.
+
+I wanted an easy way to see what it's actually doing: how hot it runs, how hard the fan is working, and whether it's ever been short on power or throttled.
 
 Pi Vitals is the first project built on the Pi itself. It's a small Express app that reads the Pi's own hardware sensors and shows them on a live dashboard I can open from any device on my home network.
 
@@ -59,7 +62,7 @@ The browser asks `/api/vitals` for fresh numbers every 2 seconds. The server rea
 
 **Why it isn't hosted online**
 
-The app reads the hardware of the machine it runs on, so it has to run on the Pi. Hosted on Netlify or Railway, it would be reading their servers instead. It also binds to `127.0.0.1` by default, so only the Pi itself can open it until I choose to share it on my home network.
+The app reads the hardware of the machine it runs on, so it has to run on the Pi. 
 
 **Running it**
 
