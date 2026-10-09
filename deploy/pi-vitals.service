@@ -1,0 +1,16 @@
+[Unit]
+Description=Pi Vitals dashboard (http://127.0.0.1:3141 unless HOST is set in .env)
+Documentation=https://github.com/boobeh123/Pi-vitals
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/projects/pi-vitals
+# Node comes from nvm, which systemd doesn't load, so source it here.
+# This keeps working if the nvm default Node version changes.
+ExecStart=/bin/bash -c '. "%h/.nvm/nvm.sh" && exec node server.js'
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

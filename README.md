@@ -89,3 +89,18 @@ PORT=3141
 ```
 
 and visit `http://<pi-ip-address>:3141`.
+
+**Starting it at boot**
+
+`deploy/pi-vitals.service` is a systemd *user* service: it runs as you, not root, and restarts itself if it crashes. It loads Node through nvm, so it keeps working if your default Node version changes.
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp deploy/pi-vitals.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now pi-vitals
+loginctl enable-linger "$USER"   # start at boot even before anyone logs in
+```
+
+Handy commands: `systemctl --user status pi-vitals`, `systemctl --user restart pi-vitals` (after changing `.env` or pulling updates), and `journalctl --user -u pi-vitals -f` for logs. While the service is running, it holds port 3141, so stop it before running `npm start` by hand.
+
