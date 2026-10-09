@@ -6,6 +6,10 @@
   <p align="center">Not deployed to the public - for my home network</p>
 </p>
 
+<p align="center">
+  <img src="docs/piVitalsDemo.gif" alt="Pi Vitals dashboard updating live: CPU temperature graph, spinning fan icon, CPU clock, load, memory, uptime, throttling and AdGuard status" width="800">
+</p>
+
 ## About The Project
 
 ### Why this exists:
