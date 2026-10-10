@@ -45,6 +45,120 @@ const THROTTLE_FLAGS = [
 ];
 
 /**************************************************************
+Parsers
+***************************************************************/
+// Text from /proc, /sys or a command goes in, plain data comes out. They don't read anything
+// themselves, so the tests can check them with sample text.
+
+const parseMeminfo = (text) => {
+  const lines = text.split('\n');
+  const readKb = (key) => {
+    const line = lines.find((entry) => entry.startsWith(`${key}:`));
+    return line ? Number(line.split(/\s+/)[1]) : 0;
+  };
+
+  const totalMb = Math.round(readKb('MemTotal') / 1024);
+  const availableMb = Math.round(readKb('MemAvailable') / 1024);
+  return { totalMb, usedMb: totalMb - availableMb };
+};
+
+// Which kind of drive is mounted at /. Lines look like "/dev/mmcblk0p2 / ext4 rw,noatime 0 0",
+// and if / is listed twice, the last line is the one in use.
+const parseDriveKind = (mountsText) => {
+  const device = mountsText
+    .split('\n')
+    .map((line) => line.split(' '))
+    .findLast((fields) => fields[1] === '/')?.[0];
+  return DRIVE_KINDS.find((drive) => device?.startsWith(drive.prefix))?.kind ?? device ?? null;
+};
+
+// Space on a drive from statfs, counted the way `df` counts it: "free" leaves out the blocks
+// ext4 keeps back for root, and the percentage is used / (used + free), rounded up
+const getDiskUsage = (stats) => {
+  const usedBytes = (stats.blocks - stats.bfree) * stats.bsize;
+  const freeBytes = stats.bavail * stats.bsize;
+  return {
+    totalBytes: stats.blocks * stats.bsize,
+    usedBytes,
+    freeBytes,
+    usedPercent: Math.ceil((usedBytes / (usedBytes + freeBytes)) * 100),
+  };
+};
+
+// `vcgencmd get_throttled` prints something like "throttled=0x50000"
+const parseThrottled = (output) => {
+  const value = parseInt(output.trim().split('=')[1], 16);
+  const isSet = (bit) => (value & (1 << bit)) !== 0;
+
+  return {
+    now: THROTTLE_FLAGS.filter((flag) => isSet(flag.bit)).map((flag) => flag.label),
+    sinceBoot: THROTTLE_FLAGS.filter((flag) => isSet(flag.bit + 16)).map((flag) => flag.label),
+  };
+};
+
+// Wi-Fi signal from /proc/net/wireless and byte counters from /proc/net/dev.
+// null if the interface doesn't exist; no signal (null) if it's there but not on Wi-Fi.
+const parseNetwork = (wirelessText, devText, interfaceName = WIFI_INTERFACE) => {
+  const findLine = (text) => text.split('\n').find((line) => line.trim().startsWith(`${interfaceName}:`));
+  const devLine = findLine(devText);
+  if (!devLine) return null;
+
+  // wireless columns: interface, status, link quality (out of 70), signal level (dBm), ...
+  const wirelessLine = findLine(wirelessText);
+  const wireless = wirelessLine ? wirelessLine.trim().split(/\s+/) : null;
+
+  // dev columns after the interface: received bytes is 1st, transmitted bytes is 9th.
+  // Big counters can run straight into the colon, so split on it rather than on spaces.
+  const devFields = devLine.split(':')[1].trim().split(/\s+/);
+
+  return {
+    linkPercent: wireless ? Math.round((parseFloat(wireless[2]) / 70) * 100) : null,
+    signalDbm: wireless ? parseFloat(wireless[3]) : null,
+    rxBytes: Number(devFields[0]),
+    txBytes: Number(devFields[8]),
+  };
+};
+
+// One process's /proc/<pid>/stat line
+const parseProcessStat = (pid, text) => {
+  // The name sits in parentheses and can contain spaces or ")", so split after the last ")"
+  const close = text.lastIndexOf(')');
+  const name = text.slice(text.indexOf('(') + 1, close);
+  const fields = text.slice(close + 2).split(' ');
+  // After the name: utime and stime (CPU ticks) are fields 12-13, resident pages field 22
+  return {
+    pid,
+    name,
+    ticks: Number(fields[11]) + Number(fields[12]),
+    residentPages: Number(fields[21]),
+  };
+};
+
+// Current CPU use per program, from the CPU ticks each process used since the previous poll
+// (ps only reports an average over each process's whole life). Processes with the same name are
+// grouped, so a browser's dozen helper processes show up as one line. Busiest first; when CPU use
+// is equal, the one using more memory goes first.
+const groupProcesses = (processes, previousTicks, seconds, { pageSize, clockTicks }) => {
+  const groups = processes.reduce((byName, proc) => {
+    const ticksBefore = previousTicks.get(proc.pid) ?? proc.ticks; // new process: no usage counted yet
+    const group = byName.get(proc.name) || { name: proc.name, cpuPercent: 0, memoryMb: 0, count: 0 };
+    group.cpuPercent += ((proc.ticks - ticksBefore) / clockTicks / seconds) * 100;
+    group.memoryMb += (proc.residentPages * pageSize) / 1024 / 1024;
+    group.count += 1;
+    return byName.set(proc.name, group);
+  }, new Map());
+
+  return [...groups.values()]
+    .sort((a, b) => b.cpuPercent - a.cpuPercent || b.memoryMb - a.memoryMb)
+    .slice(0, TOP_PROCESS_COUNT)
+    .map((group) => ({
+      ...group,
+      cpuPercent: Math.round(group.cpuPercent * 10) / 10,
+      memoryMb: Math.round(group.memoryMb),
+    }));
+};
+
+/**************************************************************
 Helpers
 ***************************************************************/
 
@@ -82,46 +196,15 @@ const getFan = async () => {
   return { rpm, percent: pwm === null ? null : Math.round((pwm / 255) * 100) };
 };
 
-const getMemory = async () => {
-  const text = await fs.readFile('/proc/meminfo', 'utf8');
-  const lines = text.split('\n');
-  const readKb = (key) => {
-    const line = lines.find((entry) => entry.startsWith(`${key}:`));
-    return line ? Number(line.split(/\s+/)[1]) : 0;
-  };
+const getMemory = async () => parseMeminfo(await fs.readFile('/proc/meminfo', 'utf8'));
 
-  const totalMb = Math.round(readKb('MemTotal') / 1024);
-  const availableMb = Math.round(readKb('MemAvailable') / 1024);
-  return { totalMb, usedMb: totalMb - availableMb };
-};
+// Read once, since the drive can't change while the Pi is running
+const driveKindPromise = fs.readFile('/proc/self/mounts', 'utf8').then(parseDriveKind).catch(() => null);
 
-// Which kind of drive is mounted at /, read once since it can't change while the Pi is running.
-// /proc/self/mounts lines look like "/dev/mmcblk0p2 / ext4 rw,noatime 0 0".
-const driveKindPromise = fs
-  .readFile('/proc/self/mounts', 'utf8')
-  .then((text) => {
-    const device = text
-      .split('\n')
-      .map((line) => line.split(' '))
-      .findLast((fields) => fields[1] === '/')?.[0];
-    return DRIVE_KINDS.find((drive) => device?.startsWith(drive.prefix))?.kind ?? device ?? null;
-  })
-  .catch(() => null);
-
-// Space on the drive the Pi runs from, counted the way `df` counts it: "free" leaves out the
-// blocks ext4 keeps back for root, and the percentage is used / (used + free), rounded up
 const getDisk = async () => {
   try {
     const [stats, kind] = await Promise.all([fs.statfs('/'), driveKindPromise]);
-    const usedBytes = (stats.blocks - stats.bfree) * stats.bsize;
-    const freeBytes = stats.bavail * stats.bsize;
-    return {
-      kind,
-      totalBytes: stats.blocks * stats.bsize,
-      usedBytes,
-      freeBytes,
-      usedPercent: Math.ceil((usedBytes / (usedBytes + freeBytes)) * 100),
-    };
+    return { kind, ...getDiskUsage(stats) };
   } catch {
     return null;
   }
@@ -130,43 +213,20 @@ const getDisk = async () => {
 const getThrottling = async () => {
   try {
     const { stdout } = await execFileAsync('vcgencmd', ['get_throttled']);
-    // Output looks like "throttled=0x50000"
-    const value = parseInt(stdout.trim().split('=')[1], 16);
-    const isSet = (bit) => (value & (1 << bit)) !== 0;
-
-    return {
-      now: THROTTLE_FLAGS.filter((flag) => isSet(flag.bit)).map((flag) => flag.label),
-      sinceBoot: THROTTLE_FLAGS.filter((flag) => isSet(flag.bit + 16)).map((flag) => flag.label),
-    };
+    return parseThrottled(stdout);
   } catch {
     return null;
   }
 };
 
-// Wi-Fi signal from /proc/net/wireless and byte counters from /proc/net/dev.
-// The browser turns the byte counters into speeds by comparing two polls.
+// The browser turns the byte counters into speeds by comparing two polls
 const getNetwork = async () => {
   try {
     const [wirelessText, devText] = await Promise.all([
       fs.readFile('/proc/net/wireless', 'utf8'),
       fs.readFile('/proc/net/dev', 'utf8'),
     ]);
-    const findLine = (text) =>
-      text.split('\n').find((line) => line.trim().startsWith(`${WIFI_INTERFACE}:`));
-
-    // wireless columns: interface, status, link quality (out of 70), signal level (dBm), ...
-    const wirelessLine = findLine(wirelessText);
-    const wireless = wirelessLine ? wirelessLine.trim().split(/\s+/) : null;
-
-    // dev columns after the interface: received bytes is 1st, transmitted bytes is 9th
-    const devFields = findLine(devText).split(':')[1].trim().split(/\s+/);
-
-    return {
-      linkPercent: wireless ? Math.round((parseFloat(wireless[2]) / 70) * 100) : null,
-      signalDbm: wireless ? parseFloat(wireless[3]) : null,
-      rxBytes: Number(devFields[0]),
-      txBytes: Number(devFields[8]),
-    };
+    return parseNetwork(wirelessText, devText);
   } catch {
     return null;
   }
@@ -187,29 +247,15 @@ let lastProcessSample = null;
 
 const readProcess = async (pid) => {
   try {
-    const stat = await fs.readFile(`/proc/${pid}/stat`, 'utf8');
-    // The name sits in parentheses and can contain spaces, so split after the last ")"
-    const close = stat.lastIndexOf(')');
-    const name = stat.slice(stat.indexOf('(') + 1, close);
-    const fields = stat.slice(close + 2).split(' ');
-    // After the name: utime and stime (CPU ticks) are fields 12-13, resident pages field 22
-    return {
-      pid,
-      name,
-      ticks: Number(fields[11]) + Number(fields[12]),
-      residentPages: Number(fields[21]),
-    };
+    return parseProcessStat(pid, await fs.readFile(`/proc/${pid}/stat`, 'utf8'));
   } catch {
     return null; // the process exited while we were reading it
   }
 };
 
-// Current CPU use per program, worked out from how much CPU time each process used since the last poll
-// (ps only reports an average over each process's whole life). Processes with the same name are grouped,
-// so a browser's dozen helper processes show up as one line.
 const getTopProcesses = async () => {
   try {
-    const { pageSize, clockTicks } = await systemConstantsPromise;
+    const constants = await systemConstantsPromise;
     const pids = (await fs.readdir('/proc')).filter((entry) => /^\d+$/.test(entry)); // numeric folders are processes
     const processes = (await Promise.all(pids.map(readProcess))).filter(Boolean);
     const now = Date.now();
@@ -218,24 +264,7 @@ const getTopProcesses = async () => {
     lastProcessSample = { time: now, ticks: new Map(processes.map((proc) => [proc.pid, proc.ticks])) };
     if (!previous) return null; // need two samples to measure
 
-    const seconds = (now - previous.time) / 1000;
-    const groups = processes.reduce((byName, proc) => {
-      const previousTicks = previous.ticks.get(proc.pid) ?? proc.ticks; // new process: no usage counted yet
-      const group = byName.get(proc.name) || { name: proc.name, cpuPercent: 0, memoryMb: 0, count: 0 };
-      group.cpuPercent += ((proc.ticks - previousTicks) / clockTicks / seconds) * 100;
-      group.memoryMb += (proc.residentPages * pageSize) / 1024 / 1024;
-      group.count += 1;
-      return byName.set(proc.name, group);
-    }, new Map());
-
-    return [...groups.values()]
-      .sort((a, b) => b.cpuPercent - a.cpuPercent || b.memoryMb - a.memoryMb)
-      .slice(0, TOP_PROCESS_COUNT)
-      .map((group) => ({
-        ...group,
-        cpuPercent: Math.round(group.cpuPercent * 10) / 10,
-        memoryMb: Math.round(group.memoryMb),
-      }));
+    return groupProcesses(processes, previous.ticks, (now - previous.time) / 1000, constants);
   } catch {
     return null;
   }
@@ -319,4 +348,18 @@ exports.getVitals = async (req, res) => {
     network,
     topProcesses,
   });
+};
+
+/**************************************************************
+For the tests
+***************************************************************/
+
+exports.parsers = {
+  parseMeminfo,
+  parseDriveKind,
+  getDiskUsage,
+  parseThrottled,
+  parseNetwork,
+  parseProcessStat,
+  groupProcesses,
 };

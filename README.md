@@ -61,7 +61,7 @@ Everything is read straight from the Pi. No database, no outside services, and n
 ```
 server.js                       Express setup: helmet, morgan, static files, 404 and error handlers
 routes/vitalsRoutes.js          GET /  (the dashboard),  GET /api/vitals  and  GET /api/history  (JSON)
-controller/vitalsController.js  Reads every sensor in parallel and returns one JSON object
+controller/vitalsController.js  Reads every sensor in parallel and returns one JSON object (parsers kept separate so tests can feed them text)
 controller/historyController.js Records the CPU temperature every 2s and keeps a day of minute averages
 views/dashboard.ejs             Dashboard markup
 views/error.ejs                 404 / error page
@@ -121,6 +121,8 @@ npm test
 ```
 
 Uses Node's built-in test runner, so there's nothing extra to install. It takes about 2 seconds and reads the Pi's real sensors, so run it on the Pi.
+
+`test/parsersTest.js` feeds the sensor parsers sample text, including the awkward cases: program names with spaces or a `)` in them, several throttling flags at once, no Wi-Fi link, a byte counter that runs into the colon, and a disk reading that must round up the way `df` does.
 
 `test/serverTest.js` starts the real `server.js` on a free port and checks over HTTP:
 

@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test test/serverTest.js"
+    "test": "node --test test/parsersTest.js test/serverTest.js"
   },
   "author": "Bobby",
   "license": "ISC",
