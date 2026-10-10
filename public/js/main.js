@@ -31,6 +31,8 @@ const uptime = document.querySelector('.uptime');
 const healthPill = document.querySelector('.healthPill');
 const healthNote = document.querySelector('.healthNote');
 const adguardPill = document.querySelector('.adguardPill');
+const adguardNote = document.querySelector('.adguardNote');
+const adguardChecked = document.querySelector('.adguardChecked');
 const wifiPill = document.querySelector('.wifiPill');
 const wifiNote = document.querySelector('.wifiNote');
 const netDown = document.querySelector('.netDown');
@@ -49,6 +51,9 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // The real fan spins ~2000+ RPM, which would just look like a blur.
 // Show it at 1/40 speed so faster still clearly means faster.
 const FAN_VISUAL_SCALE = 40;
+
+// AdGuard normally answers in well under 100 ms; a second or more is slow enough to notice in a browser
+const SLOW_DNS_MS = 1000;
 
 const tempHistory = [];
 let lastSpinRpm = 0;
@@ -209,6 +214,26 @@ const renderHealth = (throttling) => {
   healthNote.textContent = 'No under-voltage or throttling since boot.';
 };
 
+const renderAdguard = (service, dnsCheck, time) => {
+  // The non-breaking space keeps "19 ms" together when the note wraps
+  adguardNote.textContent = dnsCheck.ok
+    ? `Looked up ${dnsCheck.domain} in ${dnsCheck.ms}\u00a0ms`
+    : `Lookup failed: ${dnsCheck.error}`;
+  // The lookup runs once a minute, so say how fresh the result is
+  adguardChecked.textContent = `Checked ${formatAgo(time - dnsCheck.checkedAt)}`;
+
+  // A running service isn't enough: it also has to answer the test lookup
+  if (service !== 'active') {
+    setPill(adguardPill, 'critical', `Not running (${service})`);
+  } else if (!dnsCheck.ok) {
+    setPill(adguardPill, 'critical', 'Not answering');
+  } else if (dnsCheck.ms >= SLOW_DNS_MS) {
+    setPill(adguardPill, 'warning', 'Slow');
+  } else {
+    setPill(adguardPill, 'good', 'Answering');
+  }
+};
+
 const renderNetwork = (network, time) => {
   if (!network) {
     setPill(wifiPill, 'unknown', 'Unavailable');
@@ -295,9 +320,7 @@ const renderVitals = (vitals) => {
   uptime.textContent = formatUptime(vitals.uptimeSec);
   renderHealth(vitals.throttling);
 
-  const adguardRunning = vitals.adguard === 'active';
-  setPill(adguardPill, adguardRunning ? 'good' : 'critical', adguardRunning ? 'Running' : `Not running (${vitals.adguard})`);
-
+  renderAdguard(vitals.adguard, vitals.dnsCheck, vitals.time);
   renderNetwork(vitals.network, vitals.time);
   renderProcesses(vitals.topProcesses);
 };

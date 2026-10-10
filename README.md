@@ -26,7 +26,7 @@ Pi Vitals is the first project built on the Pi itself. It's a small Express app 
 * Fan speed in RPM and % power, with an animated fan icon that spins faster as the real fan speeds up
 * CPU clock speed, load average, memory use, and uptime
 * Power & throttling check: warns about under-voltage or thermal throttling, right now or since boot
-* AdGuard Home status: shows whether the DNS service is running
+* AdGuard Home check: shows whether AdGuard is actually answering DNS lookups, not just running, and how long a test lookup took
 * Wi-Fi card: signal strength (dBm and link quality) plus live download and upload speeds
 * What's using the CPU: the top 5 programs by current CPU use, with memory, grouped by name (like a mini `top`)
 * Refreshes every 2 seconds, with light and dark mode and a layout that works on phones
@@ -49,7 +49,7 @@ Everything is read straight from the Pi. No database, no outside services, and n
 | Memory | `/proc/meminfo` |
 | Load and uptime | Node's built-in `os` module |
 | Power & throttling | `vcgencmd get_throttled` |
-| AdGuard Home | `systemctl is-active AdGuardHome` |
+| AdGuard Home | `systemctl is-active AdGuardHome`, plus a test lookup of `example.com` sent to AdGuard at `127.0.0.1` |
 | Wi-Fi signal and speeds | `/proc/net/wireless` and `/proc/net/dev` |
 | Top programs | `/proc/<pid>/stat`, compared between polls (page size and clock ticks from `getconf`) |
 
@@ -66,6 +66,19 @@ public/css/styles.css           All styles, light and dark mode
 ```
 
 The browser asks `/api/vitals` for fresh numbers every 2 seconds. The server reads the sensors and sends back JSON. The page then updates the numbers, redraws the temperature graph (an SVG built with plain JavaScript), and adjusts the fan animation speed.
+
+**The AdGuard check**
+
+A running service doesn't prove DNS works: AdGuard stays "active" even when its upstream DNS server times out. So once a minute, the server asks AdGuard to look up `example.com`, a domain reserved for testing that no block list includes. Polls in between reuse that result.
+
+| Card shows | Meaning |
+|---|---|
+| Answering | The test lookup got an answer in under 1 second |
+| Slow | It got an answer, but took 1 second or more |
+| Not answering | The service is running, but the lookup failed or got no answer within 2 seconds |
+| Not running | The AdGuardHome service is stopped |
+
+The test lookups appear in AdGuard's query log as `example.com` from `127.0.0.1`, about once a minute while the dashboard is open. They never count as blocked. To hide them, add `example.com` to the ignored domains for the query log and statistics in AdGuard's Settings → General settings.
 
 **Why it isn't hosted online**
 

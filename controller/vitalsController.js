@@ -1,3 +1,4 @@
+const dns = require('node:dns');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
@@ -11,6 +12,22 @@ const CPU_FREQ_PATH = '/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq';
 const FAN_HWMON_DIR = '/sys/devices/platform/cooling_fan/hwmon';
 const WIFI_INTERFACE = 'wlan0';
 const TOP_PROCESS_COUNT = 5;
+
+// The DNS check asks AdGuard Home on this Pi to look up a normal domain, the same way any
+// device on the network would. example.com is reserved for testing, so no block list has it.
+const DNS_SERVER = '127.0.0.1';
+const DNS_TEST_DOMAIN = 'example.com';
+const DNS_TIMEOUT_MS = 2000;
+// The page polls every 2 seconds, but one lookup a minute is plenty and keeps AdGuard's query log readable
+const DNS_CHECK_INTERVAL_MS = 60 * 1000;
+
+// Plain-English reasons for the dns module's error codes
+const DNS_ERRORS = {
+  ETIMEOUT: 'timed out',
+  ESERVFAIL: "its upstream DNS server didn't answer",
+  ECONNREFUSED: 'nothing is listening on port 53',
+  EREFUSED: 'AdGuard refused it',
+};
 
 // Bits from `vcgencmd get_throttled`. Low bits are "right now", bits 16+ are "since boot".
 const THROTTLE_FLAGS = [
@@ -195,6 +212,36 @@ const getServiceStatus = async (serviceName) => {
   }
 };
 
+// Asks only AdGuard, and only once per check, so a failure shows up instead of being retried away
+const adguardResolver = new dns.promises.Resolver({ timeout: DNS_TIMEOUT_MS, tries: 1 });
+adguardResolver.setServers([DNS_SERVER]);
+
+// The AdGuard service can be "active" while lookups fail, for example when its upstream
+// server times out, so the dashboard also checks that a real lookup gets an answer
+const checkDns = async () => {
+  const start = performance.now();
+  try {
+    await adguardResolver.resolve4(DNS_TEST_DOMAIN);
+    const ms = Math.round(performance.now() - start);
+    return { ok: true, domain: DNS_TEST_DOMAIN, ms, checkedAt: Date.now() };
+  } catch (err) {
+    const error = DNS_ERRORS[err.code] || err.code || 'unknown error';
+    return { ok: false, domain: DNS_TEST_DOMAIN, error, checkedAt: Date.now() };
+  }
+};
+
+// Every request shares the latest check; a new lookup starts at most once a minute
+let dnsCheckPromise = null;
+let dnsCheckStartedAt = 0;
+
+const getDnsCheck = () => {
+  if (!dnsCheckPromise || Date.now() - dnsCheckStartedAt >= DNS_CHECK_INTERVAL_MS) {
+    dnsCheckStartedAt = Date.now();
+    dnsCheckPromise = checkDns();
+  }
+  return dnsCheckPromise;
+};
+
 /**************************************************************
 Handlers
 ***************************************************************/
@@ -204,13 +251,14 @@ exports.getDashboard = async (req, res) => {
 };
 
 exports.getVitals = async (req, res) => {
-  const [tempMilli, freqKhz, fan, memory, throttling, adguard, network, topProcesses] = await Promise.all([
+  const [tempMilli, freqKhz, fan, memory, throttling, adguard, dnsCheck, network, topProcesses] = await Promise.all([
     readNumber(THERMAL_PATH),
     readNumber(CPU_FREQ_PATH),
     getFan(),
     getMemory(),
     getThrottling(),
     getServiceStatus('AdGuardHome'),
+    getDnsCheck(),
     getNetwork(),
     getTopProcesses(),
   ]);
@@ -226,6 +274,7 @@ exports.getVitals = async (req, res) => {
     memory,
     throttling,
     adguard,
+    dnsCheck,
     network,
     topProcesses,
   });
