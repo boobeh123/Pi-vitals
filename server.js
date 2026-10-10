@@ -5,6 +5,7 @@ const express = require('express');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const vitalsRoutes = require('./routes/vitalsRoutes');
+const { startHistory } = require('./controller/historyController');
 
 const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
@@ -52,6 +53,9 @@ app.use((err, req, res, next) => {
     message: 'The server hit an error. Try again in a moment.',
   });
 });
+
+// Start recording temperatures for the history charts, then serve the dashboard
+startHistory();
 
 app.listen(PORT, HOST, () => {
   console.log(`Pi Vitals running at http://${HOST}:${PORT}`);

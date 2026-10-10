@@ -8,6 +8,8 @@ const liveText = document.querySelector('.liveText');
 const tempValue = document.querySelector('.tempValue');
 const tempPill = document.querySelector('.tempSection .statusPill');
 const tempRange = document.querySelector('.tempRange');
+const rangeLabel = document.querySelector('.rangeLabel');
+const rangeInputs = document.querySelectorAll('input[name="chartRange"]');
 const sparkline = document.querySelector('.sparkline');
 const chartGrid = document.querySelector('.chartGrid');
 const sparkLine = document.querySelector('.sparkLine');
@@ -48,10 +50,19 @@ const processRows = document.querySelector('.processRows');
 Settings and state
 ***************************************************************/
 const POLL_MS = 2000;
-const HISTORY_MS = 5 * 60 * 1000; // the chart shows the last 5 minutes
-// Readings further apart than this get a gap in the line instead of a straight join,
-// for example while the tab was hidden or the server couldn't be reached
-const GAP_MS = POLL_MS * 3;
+const MINUTE_MS = 60 * 1000;
+
+// The chart's ranges. The 5-minute chart uses readings 2 seconds apart; the longer ones use the
+// server's one-a-minute averages. Readings further apart than gapMs get a gap in the line instead
+// of a straight join, for example while the Pi was off or the server couldn't be reached.
+const CHART_RANGES = {
+  '5m': { windowMs: 5 * MINUTE_MS, gapMs: POLL_MS * 3, label: 'Last 5 minutes' },
+  '1h': { windowMs: 60 * MINUTE_MS, gapMs: 3 * MINUTE_MS, label: 'Last hour' },
+  '24h': { windowMs: 24 * 60 * MINUTE_MS, gapMs: 3 * MINUTE_MS, label: 'Last 24 hours' },
+};
+// The longer charts gain one reading a minute, so there's no point fetching them more often
+const HISTORY_REFRESH_MS = MINUTE_MS;
+
 const CHART_HEIGHT = 140;
 const CHART_PAD = { top: 8, right: 8, bottom: 8, left: 34 };
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -67,7 +78,11 @@ const SLOW_DNS_MS = 1000;
 const DISK_WARNING_PERCENT = 80;
 const DISK_CRITICAL_PERCENT = 90;
 
-const tempHistory = [];
+const tempHistory = []; // readings 2 seconds apart for the 5-minute chart, newest last
+let minuteHistory = []; // the server's one-a-minute averages for the last 24 hours
+let chartRange = '5m';
+let latestTime = 0; // server time of the newest reading: the chart's right edge
+let historyFetchedAt = 0;
 let lastSpinRpm = 0;
 let lastNetwork = null; // previous byte counters, for working out speeds
 let pollTimer = null;
@@ -124,7 +139,9 @@ const getSignalStatus = (dbm) => {
 const formatAgo = (ms) => {
   const seconds = Math.round(ms / 1000);
   if (seconds < 60) return `${seconds}s ago`;
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s ago`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
 };
 
 const createSvg = (tag, attributes) => {
@@ -145,20 +162,25 @@ const getYRange = (temps) => {
   return { low, high };
 };
 
-// Map history to pixel positions for the current chart width
-const getChartPoints = () => {
+// The readings the selected range shows
+const getChartSamples = () => {
+  if (chartRange === '5m') return tempHistory;
+  const { windowMs } = CHART_RANGES[chartRange];
+  return minuteHistory.filter((sample) => sample.time >= latestTime - windowMs);
+};
+
+// Map readings to pixel positions for the current chart width
+const getChartPoints = (samples) => {
   const width = sparkline.clientWidth;
-  const temps = tempHistory.map((sample) => sample.tempC);
-  const { low, high } = getYRange(temps);
+  const { low, high } = getYRange(samples.map((sample) => sample.tempC));
   const plotWidth = width - CHART_PAD.left - CHART_PAD.right;
   const plotHeight = CHART_HEIGHT - CHART_PAD.top - CHART_PAD.bottom;
+  const { windowMs } = CHART_RANGES[chartRange];
 
-  // Readings sit by time: the newest on the right edge, 5 minutes before it on the left edge
-  const newestTime = tempHistory[tempHistory.length - 1].time;
-
-  const points = tempHistory.map((sample) => ({
+  // Readings sit by time: the newest moment on the right edge, the start of the range on the left
+  const points = samples.map((sample) => ({
     ...sample,
-    x: CHART_PAD.left + plotWidth * (1 - (newestTime - sample.time) / HISTORY_MS),
+    x: CHART_PAD.left + plotWidth * (1 - (latestTime - sample.time) / windowMs),
     y: CHART_PAD.top + plotHeight * (1 - (sample.tempC - low) / (high - low)),
   }));
 
@@ -169,8 +191,19 @@ const getChartPoints = () => {
 Render functions
 ***************************************************************/
 const renderChart = () => {
-  if (tempHistory.length === 0) return;
-  const { width, low, high, plotHeight, points } = getChartPoints();
+  const samples = getChartSamples();
+  if (samples.length === 0) {
+    // For example the hour chart in the first minute after the server starts
+    chartGrid.replaceChildren();
+    sparkLine.setAttribute('d', '');
+    latestDot.setAttribute('cx', -10);
+    latestDot.setAttribute('cy', -10);
+    tempRange.textContent = 'no readings yet';
+    return;
+  }
+
+  const { width, low, high, plotHeight, points } = getChartPoints(samples);
+  const { gapMs } = CHART_RANGES[chartRange];
   sparkline.setAttribute('viewBox', `0 0 ${width} ${CHART_HEIGHT}`);
 
   // Gridlines every 5 °C, labeled on the left
@@ -188,7 +221,7 @@ const renderChart = () => {
   // "M" starts a new piece of line, so missing readings show as a gap rather than a straight join
   const pathData = points
     .map((point, index) => {
-      const startsPiece = index === 0 || point.time - points[index - 1].time > GAP_MS;
+      const startsPiece = index === 0 || point.time - points[index - 1].time > gapMs;
       return `${startsPiece ? 'M' : 'L'}${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
     })
     .join(' ');
@@ -199,7 +232,7 @@ const renderChart = () => {
   latestDot.setAttribute('cx', latest.x);
   latestDot.setAttribute('cy', latest.y);
 
-  const temps = tempHistory.map((sample) => sample.tempC);
+  const temps = samples.map((sample) => sample.tempC);
   tempRange.textContent = `low ${Math.min(...temps).toFixed(1)} °C / high ${Math.max(...temps).toFixed(1)} °C`;
 };
 
@@ -337,9 +370,10 @@ const renderVitals = (vitals) => {
     const { status, text } = getTempStatus(vitals.cpuTempC);
     setPill(tempPill, status, text);
 
+    latestTime = Math.max(latestTime, vitals.time);
     tempHistory.push({ time: vitals.time, tempC: vitals.cpuTempC });
-    // Keep only the readings the chart shows
-    while (tempHistory[0].time < vitals.time - HISTORY_MS) tempHistory.shift();
+    // Keep only what the 5-minute chart shows
+    while (tempHistory[0].time < vitals.time - CHART_RANGES['5m'].windowMs) tempHistory.shift();
     renderChart();
   }
 
@@ -388,6 +422,7 @@ const pollVitals = async () => {
     liveStatus.classList.add('isLive');
     liveStatus.classList.remove('isOffline');
     liveText.textContent = `Live · ${new Date(vitals.time).toLocaleTimeString()}`;
+    if (chartRange !== '5m' && Date.now() - historyFetchedAt >= HISTORY_REFRESH_MS) fetchHistory();
   } catch (err) {
     console.error(err);
     liveStatus.classList.remove('isLive');
@@ -397,6 +432,41 @@ const pollVitals = async () => {
     pollInFlight = false;
     scheduleNextPoll();
   }
+};
+
+// The server records temperatures even while no page is open or this tab is hidden,
+// so its readings fill in the charts on load and when the tab comes back
+const fetchHistory = async () => {
+  historyFetchedAt = Date.now();
+  try {
+    const response = await fetch('/api/history');
+    if (!response.ok) throw new Error(`Server responded ${response.status}`);
+    const { recent, minutes } = await response.json();
+
+    // Keep any live readings newer than the server's newest one
+    const newestServerTime = recent.at(-1)?.time ?? 0;
+    const newerLive = tempHistory.filter((sample) => sample.time > newestServerTime);
+    tempHistory.splice(0, tempHistory.length, ...recent, ...newerLive);
+    minuteHistory = minutes;
+    latestTime = Math.max(latestTime, newestServerTime);
+    renderChart();
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+const setChartRange = (range) => {
+  chartRange = range;
+  const { label } = CHART_RANGES[range];
+  rangeLabel.textContent = label;
+  sparkline.setAttribute('aria-label', `CPU temperature over the ${label.toLowerCase()}`);
+  if (range !== '5m' && Date.now() - historyFetchedAt >= HISTORY_REFRESH_MS) fetchHistory();
+  renderChart();
+};
+
+const handleRangeChange = (event) => {
+  handleChartLeave(); // the tooltip belonged to the old range
+  setChartRange(event.target.value);
 };
 
 const handleVisibilityChange = () => {
@@ -409,11 +479,13 @@ const handleVisibilityChange = () => {
   netDown.textContent = '--';
   netUp.textContent = '--';
   if (!pollInFlight) pollVitals();
+  fetchHistory();
 };
 
 const handleChartHover = (event) => {
-  if (tempHistory.length === 0) return;
-  const { points } = getChartPoints();
+  const samples = getChartSamples();
+  if (samples.length === 0) return;
+  const { points } = getChartPoints(samples);
   const bounds = sparkline.getBoundingClientRect();
   const mouseX = event.clientX - bounds.left;
 
@@ -427,9 +499,14 @@ const handleChartHover = (event) => {
   hoverDot.setAttribute('cy', nearest.y);
   sparkline.classList.add('isHovering');
 
-  const latestTime = tempHistory[tempHistory.length - 1].time;
-  const age = latestTime - nearest.time;
-  chartTooltip.textContent = `${nearest.tempC.toFixed(1)} °C · ${age === 0 ? 'now' : formatAgo(age)}`;
+  // The 5-minute chart says how long ago; the longer ones show the clock time of each minute's average
+  if (chartRange === '5m') {
+    const age = latestTime - nearest.time;
+    chartTooltip.textContent = `${nearest.tempC.toFixed(1)} °C · ${age === 0 ? 'now' : formatAgo(age)}`;
+  } else {
+    const clockTime = new Date(nearest.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    chartTooltip.textContent = `${nearest.tempC.toFixed(1)} °C average · ${clockTime}`;
+  }
   chartTooltip.style.left = `${Math.min(Math.max(nearest.x, 60), bounds.width - 60)}px`;
   chartTooltip.hidden = false;
 };
@@ -446,5 +523,9 @@ sparkline.addEventListener('pointermove', handleChartHover);
 sparkline.addEventListener('pointerleave', handleChartLeave);
 window.addEventListener('resize', renderChart);
 document.addEventListener('visibilitychange', handleVisibilityChange);
+rangeInputs.forEach((input) => input.addEventListener('change', handleRangeChange));
 
+fetchHistory();
+// Some browsers restore the last picked range on reload, so start from whichever is checked
+setChartRange(document.querySelector('input[name="chartRange"]:checked').value);
 pollVitals();

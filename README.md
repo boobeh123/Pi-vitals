@@ -22,7 +22,7 @@ Pi Vitals is the first project built on the Pi itself. It's a small Express app 
 ## How It Works
 
 ### Features
-* CPU temperature with a Cool / Warm / Hot status and a 5-minute history graph (hover for exact readings; missed readings show as a gap)
+* CPU temperature with a Cool / Warm / Hot status and a history graph for the last 5 minutes, hour, or 24 hours (hover for exact readings; gaps show where readings are missing, for example while the Pi was off)
 * Fan speed in RPM and % power, with an animated fan icon that spins faster as the real fan speeds up
 * CPU clock speed, load average, and memory use, with uptime next to the hostname
 * Storage: space used and free on the SD card, counted the same way as `df -h`; the bar turns amber at 80% full and red at 90%
@@ -60,15 +60,22 @@ Everything is read straight from the Pi. No database, no outside services, and n
 
 ```
 server.js                       Express setup: helmet, morgan, static files, 404 and error handlers
-routes/vitalsRoutes.js          GET /  (the dashboard)  and  GET /api/vitals  (JSON)
+routes/vitalsRoutes.js          GET /  (the dashboard),  GET /api/vitals  and  GET /api/history  (JSON)
 controller/vitalsController.js  Reads every sensor in parallel and returns one JSON object
+controller/historyController.js Records the CPU temperature every 2s and keeps a day of minute averages
 views/dashboard.ejs             Dashboard markup
 views/error.ejs                 404 / error page
 public/js/main.js               Polls /api/vitals every 2s and updates the page and graph
 public/css/styles.css           All styles, light and dark mode
 ```
 
-The browser asks `/api/vitals` for fresh numbers every 2 seconds while the tab is visible, and asks again as soon as you come back to it. The server reads the sensors and sends back JSON. The page then updates the numbers, redraws the temperature graph (an SVG built with plain JavaScript), and adjusts the fan animation speed.
+The browser asks `/api/vitals` for fresh numbers every 2 seconds while the tab is visible, and asks again as soon as you come back to it. The server reads the sensors and sends back JSON. The page then updates the numbers, redraws the temperature graph (an SVG built with plain JavaScript), and adjusts the fan animation speed. When the page opens, and when you come back to its tab, it also fetches `/api/history`, so the chart starts out full instead of empty.
+
+**Temperature history**
+
+The server records the CPU temperature every 2 seconds, whether or not the dashboard is open. It keeps the last 5 minutes of those readings for the 5-minute chart, and one average per minute for the last 24 hours for the hour and day charts.
+
+The minute averages are saved to `data/history.json` every 10 minutes and whenever the service stops, so restarts and reboots keep the last day. A power cut loses at most the last 10 minutes. The file is about 50 KB and is gitignored. If it's ever damaged, the server logs that and starts a fresh history.
 
 **The AdGuard check**
 

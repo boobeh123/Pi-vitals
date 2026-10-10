@@ -30,7 +30,15 @@
           <span class="statusText">Waiting</span>
         </p>
       </div>
-      <p class="heroValue"><span class="tempValue">--</span><span class="heroUnit">°C</span></p>
+      <div class="heroRow">
+        <p class="heroValue"><span class="tempValue">--</span><span class="heroUnit">°C</span></p>
+        <fieldset class="rangePicker">
+          <legend class="visuallyHidden">Chart range</legend>
+          <label><input type="radio" name="chartRange" value="5m" checked> 5 min</label>
+          <label><input type="radio" name="chartRange" value="1h"> 1 hour</label>
+          <label><input type="radio" name="chartRange" value="24h"> 24 hours</label>
+        </fieldset>
+      </div>
 
       <figure class="tempChart">
         <div class="chartFrame">
@@ -43,7 +51,7 @@
           </svg>
           <div class="chartTooltip" hidden></div>
         </div>
-        <figcaption class="chartCaption">Last 5 minutes · <span class="tempRange">low -- / high --</span></figcaption>
+        <figcaption class="chartCaption"><span class="rangeLabel">Last 5 minutes</span> · <span class="tempRange">low -- / high --</span></figcaption>
       </figure>
     </section>
 

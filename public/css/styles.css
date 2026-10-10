@@ -255,19 +255,67 @@ Temperature
   gap: var(--spaceSm);
 }
 
+/* The big reading on the left, the chart range picker on the right (below it on phones) */
+.heroRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--spaceSm) var(--spaceMd);
+  margin: var(--spaceSm) 0 var(--spaceMd);
+}
+
 .heroValue {
   font-family: var(--fontMono);
   font-size: clamp(3rem, 10vw, 4.5rem);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
-  margin: var(--spaceSm) 0 var(--spaceMd);
 }
 
 .heroUnit {
   color: var(--colorTextMuted);
   font-size: 0.45em;
   margin-left: var(--spaceXs);
+}
+
+/* Segmented control: real radio buttons (arrow keys move between them), drawn as pills */
+.rangePicker {
+  display: inline-flex;
+  margin: 0;
+  padding: 3px;
+  border: 1px solid var(--colorBorder);
+  border-radius: 999px;
+}
+
+.rangePicker label {
+  position: relative;
+  padding: var(--spaceXs) var(--spaceMd);
+  border-radius: 999px;
+  color: var(--colorTextMuted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* The radio itself is invisible but still focusable and clickable, stretched over its label */
+.rangePicker input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.rangePicker label:has(input:checked) {
+  background: var(--colorSeries);
+  color: var(--colorSurface);
+}
+
+.rangePicker label:has(input:focus-visible) {
+  outline: 3px solid var(--colorSeries);
+  outline-offset: 2px;
 }
 
 .tempChart {
