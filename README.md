@@ -22,7 +22,7 @@ Pi Vitals is the first project built on the Pi itself. It's a small Express app 
 ## How It Works
 
 ### Features
-* CPU temperature with a Cool / Warm / Hot status and a 5-minute history graph (hover for exact readings)
+* CPU temperature with a Cool / Warm / Hot status and a 5-minute history graph (hover for exact readings; missed readings show as a gap)
 * Fan speed in RPM and % power, with an animated fan icon that spins faster as the real fan speeds up
 * CPU clock speed, load average, and memory use, with uptime next to the hostname
 * Storage: space used and free on the SD card, counted the same way as `df -h`; the bar turns amber at 80% full and red at 90%
@@ -30,7 +30,8 @@ Pi Vitals is the first project built on the Pi itself. It's a small Express app 
 * AdGuard Home check: shows whether AdGuard is actually answering DNS lookups, not just running, and how long a test lookup took
 * Wi-Fi card: signal strength (dBm and link quality) plus live download and upload speeds
 * What's using the CPU: the top 5 programs by current CPU use, with memory, grouped by name (like a mini `top`)
-* Refreshes every 2 seconds, with light and dark mode and a layout that works on phones
+* Refreshes every 2 seconds, and stops while the tab is hidden, so the Pi isn't doing work nobody sees
+* Light and dark mode, and a layout that works on phones
 * Respects reduced-motion settings (the fan and live indicator stop animating)
 
 ### Technologies
@@ -67,7 +68,7 @@ public/js/main.js               Polls /api/vitals every 2s and updates the page 
 public/css/styles.css           All styles, light and dark mode
 ```
 
-The browser asks `/api/vitals` for fresh numbers every 2 seconds. The server reads the sensors and sends back JSON. The page then updates the numbers, redraws the temperature graph (an SVG built with plain JavaScript), and adjusts the fan animation speed.
+The browser asks `/api/vitals` for fresh numbers every 2 seconds while the tab is visible, and asks again as soon as you come back to it. The server reads the sensors and sends back JSON. The page then updates the numbers, redraws the temperature graph (an SVG built with plain JavaScript), and adjusts the fan animation speed.
 
 **The AdGuard check**
 

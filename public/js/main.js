@@ -50,7 +50,7 @@ Settings and state
 const POLL_MS = 2000;
 const HISTORY_MS = 5 * 60 * 1000; // the chart shows the last 5 minutes
 // Readings further apart than this get a gap in the line instead of a straight join,
-// for example after the server couldn't be reached for a while
+// for example while the tab was hidden or the server couldn't be reached
 const GAP_MS = POLL_MS * 3;
 const CHART_HEIGHT = 140;
 const CHART_PAD = { top: 8, right: 8, bottom: 8, left: 34 };
@@ -70,6 +70,8 @@ const DISK_CRITICAL_PERCENT = 90;
 const tempHistory = [];
 let lastSpinRpm = 0;
 let lastNetwork = null; // previous byte counters, for working out speeds
+let pollTimer = null;
+let pollInFlight = false;
 
 /**************************************************************
 Helpers
@@ -368,7 +370,15 @@ const renderVitals = (vitals) => {
 /**************************************************************
 Main logic
 ***************************************************************/
+// The next poll waits until this one finishes, so requests never pile up. A hidden tab doesn't
+// poll at all: each poll makes the Pi read the stats of every running process.
+const scheduleNextPoll = () => {
+  clearTimeout(pollTimer);
+  if (!document.hidden) pollTimer = setTimeout(pollVitals, POLL_MS);
+};
+
 const pollVitals = async () => {
+  pollInFlight = true;
   try {
     const response = await fetch('/api/vitals');
     if (!response.ok) throw new Error(`Server responded ${response.status}`);
@@ -384,9 +394,21 @@ const pollVitals = async () => {
     liveStatus.classList.add('isOffline');
     liveText.textContent = 'Lost connection, retrying…';
   } finally {
-    // Schedule the next poll only after this one finishes, so requests never pile up
-    setTimeout(pollVitals, POLL_MS);
+    pollInFlight = false;
+    scheduleNextPoll();
   }
+};
+
+const handleVisibilityChange = () => {
+  if (document.hidden) {
+    clearTimeout(pollTimer);
+    return;
+  }
+  // Back in view. An average speed over the hidden time isn't a live speed, so wait for two fresh readings.
+  lastNetwork = null;
+  netDown.textContent = '--';
+  netUp.textContent = '--';
+  if (!pollInFlight) pollVitals();
 };
 
 const handleChartHover = (event) => {
@@ -423,5 +445,6 @@ Event listeners
 sparkline.addEventListener('pointermove', handleChartHover);
 sparkline.addEventListener('pointerleave', handleChartLeave);
 window.addEventListener('resize', renderChart);
+document.addEventListener('visibilitychange', handleVisibilityChange);
 
 pollVitals();
