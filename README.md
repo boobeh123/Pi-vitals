@@ -24,7 +24,8 @@ Pi Vitals is the first project built on the Pi itself. It's a small Express app 
 ### Features
 * CPU temperature with a Cool / Warm / Hot status and a 5-minute history graph (hover for exact readings)
 * Fan speed in RPM and % power, with an animated fan icon that spins faster as the real fan speeds up
-* CPU clock speed, load average, memory use, and uptime
+* CPU clock speed, load average, and memory use, with uptime next to the hostname
+* Storage: space used and free on the SD card, counted the same way as `df -h`; the bar turns amber at 80% full and red at 90%
 * Power & throttling check: warns about under-voltage or thermal throttling, right now or since boot
 * AdGuard Home check: shows whether AdGuard is actually answering DNS lookups, not just running, and how long a test lookup took
 * Wi-Fi card: signal strength (dBm and link quality) plus live download and upload speeds
@@ -47,6 +48,7 @@ Everything is read straight from the Pi. No database, no outside services, and n
 | Fan RPM and power | `/sys/devices/platform/cooling_fan/hwmon/*/fan1_input` and `pwm1` |
 | CPU clock | `/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq` |
 | Memory | `/proc/meminfo` |
+| Storage | `statfs` on `/` (Node's `fs.statfs`), plus `/proc/self/mounts` to tell an SD card from an SSD |
 | Load and uptime | Node's built-in `os` module |
 | Power & throttling | `vcgencmd get_throttled` |
 | AdGuard Home | `systemctl is-active AdGuardHome`, plus a test lookup of `example.com` sent to AdGuard at `127.0.0.1` |

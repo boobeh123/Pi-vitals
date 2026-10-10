@@ -13,7 +13,7 @@
   <header class="siteHeader">
     <div class="headerInner">
       <h1 class="siteTitle">Pi Vitals</h1>
-      <p class="hostName"><%= hostname %></p>
+      <p class="hostName"><%= hostname %> · up <span class="uptime">--</span></p>
       <p class="liveStatus" aria-live="polite">
         <span class="liveDot" aria-hidden="true"></span>
         <span class="liveText">Connecting…</span>
@@ -84,14 +84,18 @@
       <article class="card">
         <h2 class="cardLabel">Memory</h2>
         <p class="statValue"><span class="memUsed">--</span> <span class="statUnit">/ <span class="memTotal">--</span> GB</span></p>
-        <div class="meter" role="meter" aria-label="Memory used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="meter memMeter" role="meter" aria-label="Memory used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <div class="meterFill"></div>
         </div>
       </article>
 
       <article class="card">
-        <h2 class="cardLabel">Uptime</h2>
-        <p class="statValue uptime">--</p>
+        <h2 class="cardLabel">Storage</h2>
+        <p class="statValue"><span class="diskUsed">--</span> <span class="statUnit">/ <span class="diskTotal">--</span> GB</span></p>
+        <div class="meter diskMeter" role="meter" aria-label="Storage used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="meterFill"></div>
+        </div>
+        <p class="statNote diskNote"></p>
       </article>
 
       <article class="card">

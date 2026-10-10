@@ -25,8 +25,13 @@ const load15 = document.querySelector('.load15');
 const coreCount = document.querySelector('.coreCount');
 const memUsed = document.querySelector('.memUsed');
 const memTotal = document.querySelector('.memTotal');
-const meter = document.querySelector('.meter');
-const meterFill = document.querySelector('.meterFill');
+const memMeter = document.querySelector('.memMeter');
+const memMeterFill = document.querySelector('.memMeter .meterFill');
+const diskUsed = document.querySelector('.diskUsed');
+const diskTotal = document.querySelector('.diskTotal');
+const diskMeter = document.querySelector('.diskMeter');
+const diskMeterFill = document.querySelector('.diskMeter .meterFill');
+const diskNote = document.querySelector('.diskNote');
 const uptime = document.querySelector('.uptime');
 const healthPill = document.querySelector('.healthPill');
 const healthNote = document.querySelector('.healthNote');
@@ -54,6 +59,10 @@ const FAN_VISUAL_SCALE = 40;
 
 // AdGuard normally answers in well under 100 ms; a second or more is slow enough to notice in a browser
 const SLOW_DNS_MS = 1000;
+
+// The storage meter turns amber, then red, as the drive fills up
+const DISK_WARNING_PERCENT = 80;
+const DISK_CRITICAL_PERCENT = 90;
 
 const tempHistory = [];
 let lastSpinRpm = 0;
@@ -83,6 +92,15 @@ const formatUptime = (totalSec) => {
   const minutes = Math.floor((totalSec % 3600) / 60);
   const parts = [days && `${days}d`, (days || hours) && `${hours}h`, `${minutes}m`];
   return parts.filter(Boolean).join(' ');
+};
+
+// Bytes to GB the way `df -h` and the memory card count them (1 GB = 1024³ bytes)
+const formatGb = (bytes) => (bytes / 1024 ** 3).toFixed(1);
+
+const getDiskStatus = (percent) => {
+  if (percent >= DISK_CRITICAL_PERCENT) return 'critical';
+  if (percent >= DISK_WARNING_PERCENT) return 'warning';
+  return 'normal';
 };
 
 const formatRate = (bytesPerSec) => {
@@ -192,6 +210,20 @@ const renderFan = (fan) => {
     const secondsPerTurn = fan.rpm > 0 ? 60 / (fan.rpm / FAN_VISUAL_SCALE) : 0;
     root.style.setProperty('--spinDuration', `${secondsPerTurn.toFixed(2)}s`);
   }
+};
+
+const renderDisk = (disk) => {
+  if (!disk) {
+    diskUsed.textContent = 'n/a';
+    diskNote.textContent = 'Could not read the drive.';
+    return;
+  }
+  diskUsed.textContent = formatGb(disk.usedBytes);
+  diskTotal.textContent = formatGb(disk.totalBytes);
+  diskMeterFill.style.width = `${disk.usedPercent}%`;
+  diskMeter.setAttribute('aria-valuenow', disk.usedPercent);
+  diskMeter.dataset.status = getDiskStatus(disk.usedPercent);
+  diskNote.textContent = [`${formatGb(disk.freeBytes)} GB free`, disk.kind].filter(Boolean).join(' · ');
 };
 
 const renderHealth = (throttling) => {
@@ -314,8 +346,9 @@ const renderVitals = (vitals) => {
   const memPercent = Math.round((vitals.memory.usedMb / vitals.memory.totalMb) * 100);
   memUsed.textContent = (vitals.memory.usedMb / 1024).toFixed(1);
   memTotal.textContent = (vitals.memory.totalMb / 1024).toFixed(1);
-  meterFill.style.width = `${memPercent}%`;
-  meter.setAttribute('aria-valuenow', memPercent);
+  memMeterFill.style.width = `${memPercent}%`;
+  memMeter.setAttribute('aria-valuenow', memPercent);
+  renderDisk(vitals.disk);
 
   uptime.textContent = formatUptime(vitals.uptimeSec);
   renderHealth(vitals.throttling);

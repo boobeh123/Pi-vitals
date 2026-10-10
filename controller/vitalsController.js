@@ -13,6 +13,13 @@ const FAN_HWMON_DIR = '/sys/devices/platform/cooling_fan/hwmon';
 const WIFI_INTERFACE = 'wlan0';
 const TOP_PROCESS_COUNT = 5;
 
+// Friendly names for the drive the Pi runs from, by device name
+const DRIVE_KINDS = [
+  { prefix: '/dev/mmcblk', kind: 'SD card' },
+  { prefix: '/dev/nvme', kind: 'NVMe drive' },
+  { prefix: '/dev/sd', kind: 'USB drive' },
+];
+
 // The DNS check asks AdGuard Home on this Pi to look up a normal domain, the same way any
 // device on the network would. example.com is reserved for testing, so no block list has it.
 const DNS_SERVER = '127.0.0.1';
@@ -86,6 +93,38 @@ const getMemory = async () => {
   const totalMb = Math.round(readKb('MemTotal') / 1024);
   const availableMb = Math.round(readKb('MemAvailable') / 1024);
   return { totalMb, usedMb: totalMb - availableMb };
+};
+
+// Which kind of drive is mounted at /, read once since it can't change while the Pi is running.
+// /proc/self/mounts lines look like "/dev/mmcblk0p2 / ext4 rw,noatime 0 0".
+const driveKindPromise = fs
+  .readFile('/proc/self/mounts', 'utf8')
+  .then((text) => {
+    const device = text
+      .split('\n')
+      .map((line) => line.split(' '))
+      .findLast((fields) => fields[1] === '/')?.[0];
+    return DRIVE_KINDS.find((drive) => device?.startsWith(drive.prefix))?.kind ?? device ?? null;
+  })
+  .catch(() => null);
+
+// Space on the drive the Pi runs from, counted the way `df` counts it: "free" leaves out the
+// blocks ext4 keeps back for root, and the percentage is used / (used + free), rounded up
+const getDisk = async () => {
+  try {
+    const [stats, kind] = await Promise.all([fs.statfs('/'), driveKindPromise]);
+    const usedBytes = (stats.blocks - stats.bfree) * stats.bsize;
+    const freeBytes = stats.bavail * stats.bsize;
+    return {
+      kind,
+      totalBytes: stats.blocks * stats.bsize,
+      usedBytes,
+      freeBytes,
+      usedPercent: Math.ceil((usedBytes / (usedBytes + freeBytes)) * 100),
+    };
+  } catch {
+    return null;
+  }
 };
 
 const getThrottling = async () => {
@@ -251,11 +290,12 @@ exports.getDashboard = async (req, res) => {
 };
 
 exports.getVitals = async (req, res) => {
-  const [tempMilli, freqKhz, fan, memory, throttling, adguard, dnsCheck, network, topProcesses] = await Promise.all([
+  const [tempMilli, freqKhz, fan, memory, disk, throttling, adguard, dnsCheck, network, topProcesses] = await Promise.all([
     readNumber(THERMAL_PATH),
     readNumber(CPU_FREQ_PATH),
     getFan(),
     getMemory(),
+    getDisk(),
     getThrottling(),
     getServiceStatus('AdGuardHome'),
     getDnsCheck(),
@@ -272,6 +312,7 @@ exports.getVitals = async (req, res) => {
     uptimeSec: Math.round(os.uptime()),
     fan,
     memory,
+    disk,
     throttling,
     adguard,
     dnsCheck,

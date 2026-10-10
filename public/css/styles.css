@@ -165,6 +165,15 @@ Components
   transition: width 0.6s ease;
 }
 
+/* A meter that's nearly full turns amber, then red */
+.meter[data-status="warning"] .meterFill {
+  background: var(--colorWarning);
+}
+
+.meter[data-status="critical"] .meterFill {
+  background: var(--colorCritical);
+}
+
 /**************************************************************
 Header
 ***************************************************************/
