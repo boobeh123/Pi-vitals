@@ -2,8 +2,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const THERMAL_PATH = '/sys/class/thermal/thermal_zone0/temp';
-// Gitignored. Only the minute averages are saved; the 2-second readings are rebuilt within 5 minutes.
-const HISTORY_FILE = path.join(__dirname, '..', 'data', 'history.json');
+// data/ is gitignored. Only the minute averages are saved; the 2-second readings are rebuilt within
+// 5 minutes. HISTORY_FILE can point somewhere else; the tests use it to stay away from the real file.
+const HISTORY_FILE = process.env.HISTORY_FILE || path.join(__dirname, '..', 'data', 'history.json');
 
 const SAMPLE_MS = 2000; // the same pace as the dashboard's polls
 const MINUTE_MS = 60 * 1000;

@@ -112,6 +112,25 @@ PORT=3141
 
 and visit `http://<pi-ip-address>:3141`.
 
+`HISTORY_FILE` in `.env` moves the temperature history somewhere other than `data/history.json`.
+
+**Tests**
+
+```bash
+npm test
+```
+
+Uses Node's built-in test runner, so there's nothing extra to install. It takes about 2 seconds and reads the Pi's real sensors, so run it on the Pi.
+
+`test/serverTest.js` starts the real `server.js` on a free port and checks over HTTP:
+
+- the dashboard page, its security headers, and the 404 page
+- `/api/vitals`: every stat is present and believable, and the busiest programs appear from the second poll on
+- `/api/history`: a reading is taken as soon as the server starts
+- the history file: readings older than 24 hours and broken ones are skipped on load, it's saved again when the server gets SIGTERM (as `systemctl` sends), and a damaged file is replaced with a fresh history
+
+Each test server keeps its history in a temp folder (through `HISTORY_FILE`), so running the tests never touches the dashboard's own `data/history.json`, even while the service is running.
+
 **Starting it at boot**
 
 `deploy/pi-vitals.service` is a systemd *user* service: it runs as you, not root, and restarts itself if it crashes. It loads Node through nvm, so it keeps working if your default Node version changes.
