@@ -511,6 +511,13 @@ Media queries
   }
 }
 
+/* Phones: narrower number columns leave room for program names, which otherwise break mid-word */
+@media (max-width: 600px) {
+  .processTable .numberCol {
+    width: 5rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
