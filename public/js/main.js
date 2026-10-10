@@ -48,7 +48,10 @@ const processRows = document.querySelector('.processRows');
 Settings and state
 ***************************************************************/
 const POLL_MS = 2000;
-const HISTORY_LENGTH = 150; // 150 samples x 2s = 5 minutes
+const HISTORY_MS = 5 * 60 * 1000; // the chart shows the last 5 minutes
+// Readings further apart than this get a gap in the line instead of a straight join,
+// for example after the server couldn't be reached for a while
+const GAP_MS = POLL_MS * 3;
 const CHART_HEIGHT = 140;
 const CHART_PAD = { top: 8, right: 8, bottom: 8, left: 34 };
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -148,13 +151,12 @@ const getChartPoints = () => {
   const plotWidth = width - CHART_PAD.left - CHART_PAD.right;
   const plotHeight = CHART_HEIGHT - CHART_PAD.top - CHART_PAD.bottom;
 
-  // Newest sample sits on the right edge; slots are fixed so the line scrolls left
-  const step = plotWidth / (HISTORY_LENGTH - 1);
-  const offset = HISTORY_LENGTH - tempHistory.length;
+  // Readings sit by time: the newest on the right edge, 5 minutes before it on the left edge
+  const newestTime = tempHistory[tempHistory.length - 1].time;
 
-  const points = tempHistory.map((sample, index) => ({
+  const points = tempHistory.map((sample) => ({
     ...sample,
-    x: CHART_PAD.left + (offset + index) * step,
+    x: CHART_PAD.left + plotWidth * (1 - (newestTime - sample.time) / HISTORY_MS),
     y: CHART_PAD.top + plotHeight * (1 - (sample.tempC - low) / (high - low)),
   }));
 
@@ -181,8 +183,12 @@ const renderChart = () => {
     chartGrid.append(label);
   }
 
+  // "M" starts a new piece of line, so missing readings show as a gap rather than a straight join
   const pathData = points
-    .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
+    .map((point, index) => {
+      const startsPiece = index === 0 || point.time - points[index - 1].time > GAP_MS;
+      return `${startsPiece ? 'M' : 'L'}${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+    })
     .join(' ');
   sparkLine.setAttribute('d', pathData);
 
@@ -330,7 +336,8 @@ const renderVitals = (vitals) => {
     setPill(tempPill, status, text);
 
     tempHistory.push({ time: vitals.time, tempC: vitals.cpuTempC });
-    if (tempHistory.length > HISTORY_LENGTH) tempHistory.shift();
+    // Keep only the readings the chart shows
+    while (tempHistory[0].time < vitals.time - HISTORY_MS) tempHistory.shift();
     renderChart();
   }
 
