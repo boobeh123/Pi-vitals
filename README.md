@@ -25,6 +25,7 @@ Pi Vitals is the first project built on the Pi itself. It's a small Express app 
 * CPU temperature with a Cool / Warm / Hot status and a history graph for the last 5 minutes, hour, or 24 hours (hover for exact readings; gaps show where readings are missing, for example while the Pi was off)
 * Fan speed in RPM and % power, with an animated fan icon that spins faster as the real fan speeds up
 * CPU clock speed, load average, and memory use (plus swap), with uptime next to the hostname
+* Memory over time: memory and swap use on their own chart, with the same 5 minute / hour / 24 hour views. If the Pi ever freezes, the day view shows whether memory was filling up beforehand
 * Storage: space used and free on the SD card, counted the same way as `df -h`; the bar turns amber at 80% full and red at 90%
 * Power & throttling check: warns about under-voltage or thermal throttling, right now or since boot
 * Last restart: when the Pi started, and whether the run before it shut down normally or just stopped (a freeze, crash or power cut), with how long it was down
@@ -67,11 +68,11 @@ controller/vitalsController.js  Reads every sensor in parallel and returns one J
 controller/historyController.js Records the CPU temperature, memory and swap every 2s and keeps a day of minute averages
 views/dashboard.ejs             Dashboard markup
 views/error.ejs                 404 / error page
-public/js/main.js               Polls /api/vitals every 2s and updates the page and graph
+public/js/main.js               Polls /api/vitals every 2s and updates the page and both charts
 public/css/styles.css           All styles, light and dark mode
 ```
 
-The browser asks `/api/vitals` for fresh numbers every 2 seconds while the tab is visible, and asks again as soon as you come back to it. The server reads the sensors and sends back JSON. The page then updates the numbers, redraws the temperature graph (an SVG built with plain JavaScript), and adjusts the fan animation speed. When the page opens, and when you come back to its tab, it also fetches `/api/history`, so the chart starts out full instead of empty.
+The browser asks `/api/vitals` for fresh numbers every 2 seconds while the tab is visible, and asks again as soon as you come back to it. The server reads the sensors and sends back JSON. The page then updates the numbers, redraws the temperature and memory charts (SVGs built with plain JavaScript, sharing one set of chart functions), and adjusts the fan animation speed. When the page opens, and when you come back to its tab, it also fetches `/api/history`, so the charts start out full instead of empty.
 
 **History**
 
