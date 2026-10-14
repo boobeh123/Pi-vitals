@@ -59,7 +59,10 @@ const parseMeminfo = (text) => {
 
   const totalMb = Math.round(readKb('MemTotal') / 1024);
   const availableMb = Math.round(readKb('MemAvailable') / 1024);
-  return { totalMb, usedMb: totalMb - availableMb };
+  // Swap on Raspberry Pi OS is zram: compressed pages kept in RAM, used once memory runs short
+  const swapTotalMb = Math.round(readKb('SwapTotal') / 1024);
+  const swapFreeMb = Math.round(readKb('SwapFree') / 1024);
+  return { totalMb, usedMb: totalMb - availableMb, swapTotalMb, swapUsedMb: swapTotalMb - swapFreeMb };
 };
 
 // Which kind of drive is mounted at /. Lines look like "/dev/mmcblk0p2 / ext4 rw,noatime 0 0",

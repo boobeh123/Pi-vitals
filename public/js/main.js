@@ -29,6 +29,7 @@ const memUsed = document.querySelector('.memUsed');
 const memTotal = document.querySelector('.memTotal');
 const memMeter = document.querySelector('.memMeter');
 const memMeterFill = document.querySelector('.memMeter .meterFill');
+const swapNote = document.querySelector('.swapNote');
 const diskUsed = document.querySelector('.diskUsed');
 const diskTotal = document.querySelector('.diskTotal');
 const diskMeter = document.querySelector('.diskMeter');
@@ -391,6 +392,9 @@ const renderVitals = (vitals) => {
   memTotal.textContent = (vitals.memory.totalMb / 1024).toFixed(1);
   memMeterFill.style.width = `${memPercent}%`;
   memMeter.setAttribute('aria-valuenow', memPercent);
+  swapNote.textContent = vitals.memory.swapTotalMb > 0
+    ? `Swap ${(vitals.memory.swapUsedMb / 1024).toFixed(1)} / ${(vitals.memory.swapTotalMb / 1024).toFixed(1)} GB`
+    : 'No swap';
   renderDisk(vitals.disk);
 
   uptime.textContent = formatUptime(vitals.uptimeSec);

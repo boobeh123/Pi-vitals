@@ -7,9 +7,22 @@ const assert = require('node:assert/strict');
 const { parsers } = require('../controller/vitalsController');
 
 describe('parseMeminfo', () => {
-  it('counts used memory as total minus available, like `free`', () => {
-    const meminfo = ['MemTotal:        8251392 kB', 'MemFree:          912345 kB', 'MemAvailable:    4128768 kB', ''].join('\n');
-    assert.deepEqual(parsers.parseMeminfo(meminfo), { totalMb: 8058, usedMb: 4026 });
+  it('counts used memory as total minus available, like `free`, and swap as total minus free', () => {
+    const meminfo = [
+      'MemTotal:        8251392 kB',
+      'MemFree:          912345 kB',
+      'MemAvailable:    4128768 kB',
+      'SwapCached:         1200 kB',
+      'SwapTotal:       2097136 kB',
+      'SwapFree:        1323888 kB',
+      '',
+    ].join('\n');
+    assert.deepEqual(parsers.parseMeminfo(meminfo), { totalMb: 8058, usedMb: 4026, swapTotalMb: 2048, swapUsedMb: 755 });
+  });
+
+  it('reports no swap when there is none', () => {
+    const meminfo = ['MemTotal: 8251392 kB', 'MemAvailable: 4128768 kB', 'SwapTotal: 0 kB', 'SwapFree: 0 kB', ''].join('\n');
+    assert.equal(parsers.parseMeminfo(meminfo).swapTotalMb, 0);
   });
 });
 

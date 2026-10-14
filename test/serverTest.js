@@ -104,6 +104,7 @@ describe('the running server', () => {
     assert.equal(body.load.length, 3);
     assert.ok(body.uptimeSec > 0);
     assert.ok(body.memory.totalMb > 0 && body.memory.usedMb > 0 && body.memory.usedMb < body.memory.totalMb);
+    assert.ok(body.memory.swapUsedMb >= 0 && body.memory.swapUsedMb <= body.memory.swapTotalMb);
     assert.ok(body.disk.totalBytes > body.disk.usedBytes && body.disk.usedPercent > 0 && body.disk.usedPercent <= 100);
     assert.equal(typeof body.adguard, 'string');
     assert.equal(typeof body.dnsCheck.ok, 'boolean');
