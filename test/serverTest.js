@@ -85,6 +85,8 @@ describe('the running server', () => {
     assert.match(html, /<h1 class="siteTitle">Pi Vitals<\/h1>/);
     assert.ok(html.includes(os.hostname()), 'shows the hostname');
     assert.match(html, /name="chartRange" value="24h"/);
+    assert.match(html, /name="memoryRange" value="24h"/, 'the memory chart has its own range picker');
+    assert.match(html, /class="statusPill restartPill"/);
   });
 
   it('sends security headers', async () => {

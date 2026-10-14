@@ -51,6 +51,8 @@ const JOURNAL_STOPPED_ID = 'd93fb3c9c24d451a97cea615ce59c00b';
 // "Journal stopped" is normally the very last line; allow a little slack for stragglers
 const CLEAN_STOP_WINDOW_MS = 30 * 1000;
 const BOOT_ID_PATH = '/proc/sys/kernel/random/boot_id';
+// Every /api/vitals response waits for this, so a stuck journalctl must not hold up the dashboard
+const JOURNAL_TIMEOUT_MS = 10 * 1000;
 
 // Pi 5 only: why the power chip (PMIC) was last reset, from the Raspberry Pi docs for /chosen/power.
 // 0 after a normal power-on or reboot.
@@ -368,16 +370,18 @@ const getPowerReset = async () => {
 // How the boot before this one ended, from the system log: null if the log starts with this boot
 const getPreviousBoot = async () => {
   const [{ stdout: bootList }, currentBootId] = await Promise.all([
-    execFileAsync('journalctl', ['--list-boots', '-o', 'json', '--no-pager']),
+    execFileAsync('journalctl', ['--list-boots', '-o', 'json', '--no-pager'], { timeout: JOURNAL_TIMEOUT_MS }),
     fs.readFile(BOOT_ID_PATH, 'utf8'),
   ]);
   const boot = findPreviousBoot(bootList, currentBootId);
   if (!boot) return null;
 
   // Only the newest "Journal stopped" of that boot matters (restarting journald logs one too)
-  const { stdout: stopEntry } = await execFileAsync('journalctl', [
-    '-b', boot.bootId, '-n', '1', '-o', 'json', '--output-fields=MESSAGE', '--no-pager', `MESSAGE_ID=${JOURNAL_STOPPED_ID}`,
-  ]);
+  const { stdout: stopEntry } = await execFileAsync(
+    'journalctl',
+    ['-b', boot.bootId, '-n', '1', '-o', 'json', '--output-fields=MESSAGE', '--no-pager', `MESSAGE_ID=${JOURNAL_STOPPED_ID}`],
+    { timeout: JOURNAL_TIMEOUT_MS }
+  );
   return { endedAt: Math.round(boot.lastEntry), clean: isCleanEnding(boot, parseEntryTime(stopEntry)) };
 };
 
