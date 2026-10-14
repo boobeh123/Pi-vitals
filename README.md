@@ -64,7 +64,7 @@ Everything is read straight from the Pi. No database, no outside services, and n
 server.js                       Express setup: helmet, morgan, static files, 404 and error handlers
 routes/vitalsRoutes.js          GET /  (the dashboard),  GET /api/vitals  and  GET /api/history  (JSON)
 controller/vitalsController.js  Reads every sensor in parallel and returns one JSON object (parsers kept separate so tests can feed them text)
-controller/historyController.js Records the CPU temperature every 2s and keeps a day of minute averages
+controller/historyController.js Records the CPU temperature, memory and swap every 2s and keeps a day of minute averages
 views/dashboard.ejs             Dashboard markup
 views/error.ejs                 404 / error page
 public/js/main.js               Polls /api/vitals every 2s and updates the page and graph
@@ -73,11 +73,11 @@ public/css/styles.css           All styles, light and dark mode
 
 The browser asks `/api/vitals` for fresh numbers every 2 seconds while the tab is visible, and asks again as soon as you come back to it. The server reads the sensors and sends back JSON. The page then updates the numbers, redraws the temperature graph (an SVG built with plain JavaScript), and adjusts the fan animation speed. When the page opens, and when you come back to its tab, it also fetches `/api/history`, so the chart starts out full instead of empty.
 
-**Temperature history**
+**History**
 
-The server records the CPU temperature every 2 seconds, whether or not the dashboard is open. It keeps the last 5 minutes of those readings for the 5-minute chart, and one average per minute for the last 24 hours for the hour and day charts.
+The server records the CPU temperature and how much memory and swap are in use every 2 seconds, whether or not the dashboard is open. It keeps the last 5 minutes of those readings for the 5-minute charts, and one average per minute for the last 24 hours for the hour and day charts.
 
-The minute averages are saved to `data/history.json` every 10 minutes and whenever the service stops, so restarts and reboots keep the last day. A power cut loses at most the last 10 minutes. The file is about 50 KB and is gitignored. If it's ever damaged, the server logs that and starts a fresh history.
+The minute averages are saved to `data/history.json` every 10 minutes and whenever the service stops, so restarts and reboots keep the last day. A power cut or freeze loses at most the last 10 minutes. The file is about 100 KB and is gitignored. If it's ever damaged, the server logs that and starts a fresh history. Minutes saved before memory was recorded (before Oct 14 2026) only have a temperature.
 
 **The AdGuard check**
 
@@ -143,8 +143,8 @@ Uses Node's built-in test runner, so there's nothing extra to install. It takes 
 
 - the dashboard page, its security headers, and the 404 page
 - `/api/vitals`: every stat is present and believable, and the busiest programs appear from the second poll on
-- `/api/history`: a reading is taken as soon as the server starts
-- the history file: readings older than 24 hours and broken ones are skipped on load, it's saved again when the server gets SIGTERM (as `systemctl` sends), and a damaged file is replaced with a fresh history
+- `/api/history`: a reading (temperature, memory and swap) is taken as soon as the server starts
+- the history file: readings older than 24 hours and broken ones are skipped on load, minutes saved before memory was recorded still load, it's saved again when the server gets SIGTERM (as `systemctl` sends), and a damaged file is replaced with a fresh history
 
 Each test server keeps its history in a temp folder (through `HISTORY_FILE`), so running the tests never touches the dashboard's own `data/history.json`, even while the service is running.
 

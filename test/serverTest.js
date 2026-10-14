@@ -124,11 +124,15 @@ describe('the running server', () => {
     });
   });
 
-  it('returns the temperature history as JSON', async () => {
+  it('returns the history as JSON', async () => {
     const { status, body } = await getJson(`${server.baseUrl}/api/history`);
     assert.equal(status, 200);
     assert.ok(body.recent.length >= 1, 'a reading is taken as soon as the server starts');
-    assert.ok(body.recent.every((sample) => Number.isFinite(sample.time) && Number.isFinite(sample.tempC)));
+    body.recent.forEach((sample) => {
+      assert.ok(Number.isFinite(sample.time) && Number.isFinite(sample.tempC));
+      assert.ok(sample.memPercent > 0 && sample.memPercent < 100, `memory ${sample.memPercent}%`);
+      assert.ok(sample.swapPercent === null || (sample.swapPercent >= 0 && sample.swapPercent <= 100));
+    });
     assert.deepEqual(body.minutes, []);
   });
 
@@ -139,7 +143,7 @@ describe('the running server', () => {
   });
 });
 
-describe('the temperature history file', () => {
+describe('the history file', () => {
   let tempDir;
   let historyFile;
 
@@ -155,11 +159,19 @@ describe('the temperature history file', () => {
   it('loads the saved day, skipping readings older than 24 hours and broken ones', async () => {
     const now = Date.now();
     const kept = [
-      { time: now - 10 * MINUTE_MS, tempC: 51.25 },
-      { time: now - 5 * MINUTE_MS, tempC: 52.5 },
+      { time: now - 10 * MINUTE_MS, tempC: 51.25, memPercent: null, swapPercent: null }, // saved before memory was recorded
+      { time: now - 5 * MINUTE_MS, tempC: 52.5, memPercent: 48.2, swapPercent: 30.1 },
+      { time: now - 4 * MINUTE_MS, tempC: null, memPercent: 49, swapPercent: null }, // the temperature couldn't be read
     ];
     fs.writeFileSync(historyFile, JSON.stringify({
-      minutes: [{ time: now - 25 * 60 * MINUTE_MS, tempC: 49 }, ...kept, { time: 'soon', tempC: 50 }],
+      minutes: [
+        { time: now - 25 * 60 * MINUTE_MS, tempC: 49 },
+        { time: kept[0].time, tempC: 51.25 },
+        kept[1],
+        { time: kept[2].time, tempC: 'hot', memPercent: 49 },
+        { time: now - 3 * MINUTE_MS, tempC: null, memPercent: null },
+        { time: 'soon', tempC: 50 },
+      ],
     }));
 
     const server = await startServer(historyFile);
@@ -169,7 +181,7 @@ describe('the temperature history file', () => {
     assert.deepEqual(body.minutes, kept);
     assert.deepEqual(exit, { code: 0, signal: null }, 'SIGTERM ends it cleanly');
     const saved = JSON.parse(fs.readFileSync(historyFile, 'utf8'));
-    assert.deepEqual(saved.minutes.slice(0, 2), kept, 'it saved the history again on the way out');
+    assert.deepEqual(saved.minutes.slice(0, 3), kept, 'it saved the history again on the way out');
     assert.equal(fs.existsSync(`${historyFile}.tmp`), false);
   });
 

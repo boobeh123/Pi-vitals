@@ -438,6 +438,7 @@ exports.getVitals = async (req, res) => {
 /**************************************************************
 For the tests
 ***************************************************************/
+// The history controller reuses parseMeminfo too
 
 exports.parsers = {
   parseMeminfo,
