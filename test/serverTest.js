@@ -108,6 +108,8 @@ describe('the running server', () => {
     assert.ok(body.disk.totalBytes > body.disk.usedBytes && body.disk.usedPercent > 0 && body.disk.usedPercent <= 100);
     assert.equal(typeof body.adguard, 'string');
     assert.equal(typeof body.dnsCheck.ok, 'boolean');
+    assert.ok(Math.abs(body.lastRestart.bootedAt - (Date.now() - body.uptimeSec * 1000)) < 5000, 'booted uptime ago');
+    assert.equal(typeof body.lastRestart.logReadable, 'boolean');
   });
 
   it('lists the busiest programs from the second poll on', async () => {

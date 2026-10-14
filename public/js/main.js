@@ -38,6 +38,9 @@ const diskNote = document.querySelector('.diskNote');
 const uptime = document.querySelector('.uptime');
 const healthPill = document.querySelector('.healthPill');
 const healthNote = document.querySelector('.healthNote');
+const restartPill = document.querySelector('.restartPill');
+const restartNote = document.querySelector('.restartNote');
+const restartBooted = document.querySelector('.restartBooted');
 const adguardPill = document.querySelector('.adguardPill');
 const adguardNote = document.querySelector('.adguardNote');
 const adguardChecked = document.querySelector('.adguardChecked');
@@ -137,13 +140,21 @@ const getSignalStatus = (dbm) => {
   return { status: 'serious', text: 'Weak' };
 };
 
-const formatAgo = (ms) => {
+const formatDuration = (ms) => {
   const seconds = Math.round(ms / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ${seconds % 60}s ago`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${minutes % 60}m`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
 };
+
+const formatAgo = (ms) => `${formatDuration(ms)} ago`;
+
+// "Sun, Oct 11, 12:42 AM" in the browser's own language
+const formatDateTime = (ms) =>
+  new Date(ms).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 const createSvg = (tag, attributes) => {
   const element = document.createElementNS(SVG_NS, tag);
@@ -288,6 +299,31 @@ const renderHealth = (throttling) => {
   healthNote.textContent = 'No under-voltage or throttling since boot.';
 };
 
+// How the Pi's last run ended, judged by the server from the system log
+const renderRestart = (lastRestart) => {
+  restartBooted.textContent = `Started ${formatDateTime(lastRestart.bootedAt)}`;
+  const { previous, powerReset } = lastRestart;
+
+  // The power chip (PMIC) records why it reset; it's empty after a normal power-on or reboot
+  if (powerReset && powerReset.length > 0) {
+    setPill(restartPill, 'warning', 'Power chip reset');
+    restartNote.textContent = `Reason: ${powerReset.join(', ')}.`;
+  } else if (!lastRestart.logReadable) {
+    setPill(restartPill, 'unknown', 'Unavailable');
+    restartNote.textContent = 'The system log could not be read.';
+  } else if (!previous) {
+    setPill(restartPill, 'unknown', 'No earlier start');
+    restartNote.textContent = 'The system log begins with this start, so there is nothing to compare yet.';
+  } else if (previous.clean) {
+    setPill(restartPill, 'good', 'Clean restart');
+    restartNote.textContent = `Shut down normally on ${formatDateTime(previous.endedAt)}.`;
+  } else {
+    setPill(restartPill, 'warning', 'Unexpected stop');
+    const downFor = formatDuration(lastRestart.bootedAt - previous.endedAt);
+    restartNote.textContent = `The log stopped on ${formatDateTime(previous.endedAt)} without a shutdown (a freeze, crash or power cut). Back ${downFor} later.`;
+  }
+};
+
 const renderAdguard = (service, dnsCheck, time) => {
   // The non-breaking space keeps "19 ms" together when the note wraps
   adguardNote.textContent = dnsCheck.ok
@@ -399,6 +435,7 @@ const renderVitals = (vitals) => {
 
   uptime.textContent = formatUptime(vitals.uptimeSec);
   renderHealth(vitals.throttling);
+  renderRestart(vitals.lastRestart);
 
   renderAdguard(vitals.adguard, vitals.dnsCheck, vitals.time);
   renderNetwork(vitals.network, vitals.time);

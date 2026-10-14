@@ -27,6 +27,7 @@ Pi Vitals is the first project built on the Pi itself. It's a small Express app 
 * CPU clock speed, load average, and memory use (plus swap), with uptime next to the hostname
 * Storage: space used and free on the SD card, counted the same way as `df -h`; the bar turns amber at 80% full and red at 90%
 * Power & throttling check: warns about under-voltage or thermal throttling, right now or since boot
+* Last restart: when the Pi started, and whether the run before it shut down normally or just stopped (a freeze, crash or power cut), with how long it was down
 * AdGuard Home check: shows whether AdGuard is actually answering DNS lookups, not just running, and how long a test lookup took
 * Wi-Fi card: signal strength (dBm and link quality) plus live download and upload speeds
 * What's using the CPU: the top 5 programs by current CPU use, with memory, grouped by name (like a mini `top`)
@@ -52,6 +53,7 @@ Everything is read straight from the Pi. No database, no outside services, and n
 | Storage | `statfs` on `/` (Node's `fs.statfs`), plus `/proc/self/mounts` to tell an SD card from an SSD |
 | Load and uptime | Node's built-in `os` module |
 | Power & throttling | `vcgencmd get_throttled` |
+| Last restart | `journalctl --list-boots` and the previous boot's "Journal stopped" entry, plus the Pi 5's `/proc/device-tree/chosen/power/power_reset` |
 | AdGuard Home | `systemctl is-active AdGuardHome`, plus a test lookup of `example.com` sent to AdGuard at `127.0.0.1` |
 | Wi-Fi signal and speeds | `/proc/net/wireless` and `/proc/net/dev` |
 | Top programs | `/proc/<pid>/stat`, compared between polls (page size and clock ticks from `getconf`) |
@@ -90,6 +92,19 @@ A running service doesn't prove DNS works: AdGuard stays "active" even when its 
 
 The test lookups appear in AdGuard's query log as `example.com` from `127.0.0.1`, about once a minute while the dashboard is open. They never count as blocked. To hide them, add `example.com` to the ignored domains for the query log and statistics in AdGuard's Settings → General settings.
 
+**The Last restart card**
+
+When the Pi shuts down or reboots on purpose, the system log's last line for that run is journald saying "Journal stopped". When it freezes, crashes or loses power, the log just stops. So when the server starts, it finds the run before this one in `journalctl --list-boots` and checks whether "Journal stopped" came at the end of it (within 30 seconds). This only works if the system log is kept on disk; Raspberry Pi OS keeps it in RAM by default, where it's lost at every restart. To keep it on disk, create `/etc/systemd/journald.conf.d/50-persistent.conf` (with sudo) containing `[Journal]` and `Storage=persistent` on separate lines, then run `sudo systemctl restart systemd-journald`.
+
+| Card shows | Meaning |
+|---|---|
+| Clean restart | The previous run shut down normally |
+| Unexpected stop | The previous run's log stopped without a shutdown; the card says when and how long the Pi was down |
+| No earlier start | The log begins with the current run, so there's nothing to compare yet |
+| Power chip reset | The Pi 5's power chip (PMIC) reset itself, for example from under-voltage or overheating |
+
+Reading the system log needs the `adm` group, which the Pi's default user is in. It's read once when the server starts, since none of it changes until the next boot.
+
 **Why it isn't hosted online**
 
 The app reads the hardware of the machine it runs on, so it has to run on the Pi. 
@@ -122,7 +137,7 @@ npm test
 
 Uses Node's built-in test runner, so there's nothing extra to install. It takes about 2 seconds and reads the Pi's real sensors, so run it on the Pi.
 
-`test/parsersTest.js` feeds the sensor parsers sample text, including the awkward cases: program names with spaces or a `)` in them, several throttling flags at once, no Wi-Fi link, a byte counter that runs into the colon, and a disk reading that must round up the way `df` does.
+`test/parsersTest.js` feeds the sensor parsers sample text, including the awkward cases: program names with spaces or a `)` in them, several throttling flags at once, no Wi-Fi link, a byte counter that runs into the colon, a disk reading that must round up the way `df` does, and a journald restart an hour before a freeze (which must not count as a clean shutdown).
 
 `test/serverTest.js` starts the real `server.js` on a free port and checks over HTTP:
 

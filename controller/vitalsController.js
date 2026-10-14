@@ -44,6 +44,25 @@ const THROTTLE_FLAGS = [
   { bit: 3, label: 'Soft temperature limit' },
 ];
 
+// The last restart card. systemd-journald logs "Journal stopped" (this message ID) as it shuts down,
+// so a boot whose log ends with it was shut down on purpose. A boot whose log just stops froze,
+// crashed or lost power. Users in the adm group (like the Pi's default user) can read the system log.
+const JOURNAL_STOPPED_ID = 'd93fb3c9c24d451a97cea615ce59c00b';
+// "Journal stopped" is normally the very last line; allow a little slack for stragglers
+const CLEAN_STOP_WINDOW_MS = 30 * 1000;
+const BOOT_ID_PATH = '/proc/sys/kernel/random/boot_id';
+
+// Pi 5 only: why the power chip (PMIC) was last reset, from the Raspberry Pi docs for /chosen/power.
+// 0 after a normal power-on or reboot.
+const POWER_RESET_PATH = '/proc/device-tree/chosen/power/power_reset';
+const POWER_RESET_REASONS = [
+  { bit: 0, label: 'Over-voltage' },
+  { bit: 1, label: 'Under-voltage' },
+  { bit: 2, label: 'Over-temperature' },
+  { bit: 3, label: 'Enable signal' },
+  { bit: 4, label: 'Watchdog' },
+];
+
 /**************************************************************
 Parsers
 ***************************************************************/
@@ -160,6 +179,31 @@ const groupProcesses = (processes, previousTicks, seconds, { pageSize, clockTick
       memoryMb: Math.round(group.memoryMb),
     }));
 };
+
+// The device tree stores power_reset as one 4-byte big-endian number
+const parsePowerReset = (buffer) => {
+  const value = buffer.readUInt32BE(0);
+  return POWER_RESET_REASONS.filter((reason) => (value & (1 << reason.bit)) !== 0).map((reason) => reason.label);
+};
+
+// The boot before the current one, from `journalctl --list-boots -o json` (times in microseconds).
+// null if the log starts with the current boot. The boot ID file has dashes; journalctl's doesn't.
+const findPreviousBoot = (bootListJson, currentBootId) => {
+  const boots = JSON.parse(bootListJson)
+    .map((boot) => ({ bootId: boot.boot_id, firstEntry: boot.first_entry / 1000, lastEntry: boot.last_entry / 1000 }))
+    .sort((a, b) => a.firstEntry - b.firstEntry);
+  const current = boots.findIndex((boot) => boot.bootId === currentBootId.trim().replaceAll('-', ''));
+  return current > 0 ? boots[current - 1] : null;
+};
+
+// The time of a journal entry printed with `-o json`, or null when journalctl found none
+const parseEntryTime = (jsonLine) => {
+  if (!jsonLine.trim()) return null;
+  return Number(JSON.parse(jsonLine).__REALTIME_TIMESTAMP) / 1000;
+};
+
+// A boot ended cleanly if journald said "Journal stopped" at (or within a few seconds of) the end of its log
+const isCleanEnding = (boot, stoppedAt) => stoppedAt !== null && boot.lastEntry - stoppedAt <= CLEAN_STOP_WINDOW_MS;
 
 /**************************************************************
 Helpers
@@ -313,6 +357,42 @@ const getDnsCheck = () => {
   return dnsCheckPromise;
 };
 
+const getPowerReset = async () => {
+  try {
+    return parsePowerReset(await fs.readFile(POWER_RESET_PATH));
+  } catch {
+    return null; // not a Pi 5
+  }
+};
+
+// How the boot before this one ended, from the system log: null if the log starts with this boot
+const getPreviousBoot = async () => {
+  const [{ stdout: bootList }, currentBootId] = await Promise.all([
+    execFileAsync('journalctl', ['--list-boots', '-o', 'json', '--no-pager']),
+    fs.readFile(BOOT_ID_PATH, 'utf8'),
+  ]);
+  const boot = findPreviousBoot(bootList, currentBootId);
+  if (!boot) return null;
+
+  // Only the newest "Journal stopped" of that boot matters (restarting journald logs one too)
+  const { stdout: stopEntry } = await execFileAsync('journalctl', [
+    '-b', boot.bootId, '-n', '1', '-o', 'json', '--output-fields=MESSAGE', '--no-pager', `MESSAGE_ID=${JOURNAL_STOPPED_ID}`,
+  ]);
+  return { endedAt: Math.round(boot.lastEntry), clean: isCleanEnding(boot, parseEntryTime(stopEntry)) };
+};
+
+// None of this changes until the next boot, so it's read once per server start
+const lastRestartPromise = Promise.all([
+  getPreviousBoot()
+    .then((previous) => ({ logReadable: true, previous }))
+    .catch(() => ({ logReadable: false, previous: null })),
+  getPowerReset(),
+]).then(([log, powerReset]) => ({
+  bootedAt: Math.round(Date.now() - os.uptime() * 1000),
+  ...log,
+  powerReset,
+}));
+
 /**************************************************************
 Handlers
 ***************************************************************/
@@ -322,7 +402,7 @@ exports.getDashboard = async (req, res) => {
 };
 
 exports.getVitals = async (req, res) => {
-  const [tempMilli, freqKhz, fan, memory, disk, throttling, adguard, dnsCheck, network, topProcesses] = await Promise.all([
+  const [tempMilli, freqKhz, fan, memory, disk, throttling, adguard, dnsCheck, network, topProcesses, lastRestart] = await Promise.all([
     readNumber(THERMAL_PATH),
     readNumber(CPU_FREQ_PATH),
     getFan(),
@@ -333,6 +413,7 @@ exports.getVitals = async (req, res) => {
     getDnsCheck(),
     getNetwork(),
     getTopProcesses(),
+    lastRestartPromise,
   ]);
 
   res.json({
@@ -350,6 +431,7 @@ exports.getVitals = async (req, res) => {
     dnsCheck,
     network,
     topProcesses,
+    lastRestart,
   });
 };
 
@@ -365,4 +447,8 @@ exports.parsers = {
   parseNetwork,
   parseProcessStat,
   groupProcesses,
+  parsePowerReset,
+  findPreviousBoot,
+  parseEntryTime,
+  isCleanEnding,
 };

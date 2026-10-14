@@ -165,3 +165,49 @@ describe('getDiskUsage', () => {
     });
   });
 });
+
+describe('parsePowerReset', () => {
+  it('is empty when the power chip had no reason to reset', () => {
+    assert.deepEqual(parsers.parsePowerReset(Buffer.from([0, 0, 0, 0])), []);
+  });
+
+  it('names every reason bit that is set', () => {
+    assert.deepEqual(parsers.parsePowerReset(Buffer.from([0, 0, 0, 0b10110])), ['Under-voltage', 'Over-temperature', 'Watchdog']);
+  });
+});
+
+describe('the previous boot', () => {
+  // Shaped like `journalctl --list-boots -o json`: times in microseconds, IDs without dashes
+  const bootList = JSON.stringify([
+    { index: -2, boot_id: 'aaaa1111', first_entry: 1_000_000_000_000, last_entry: 1_000_500_000_000 },
+    { index: -1, boot_id: 'bbbb2222', first_entry: 1_001_000_000_000, last_entry: 1_002_000_000_000 },
+    { index: 0, boot_id: 'cccc3333', first_entry: 1_002_100_000_000, last_entry: 1_002_200_000_000 },
+  ]);
+
+  it('is the boot just before the current one, matched by boot ID', () => {
+    assert.deepEqual(parsers.findPreviousBoot(bootList, 'cccc-3333\n'), {
+      bootId: 'bbbb2222',
+      firstEntry: 1_001_000_000,
+      lastEntry: 1_002_000_000,
+    });
+  });
+
+  it('is null when the log starts with the current boot, or the current boot is missing', () => {
+    assert.equal(parsers.findPreviousBoot(bootList, 'aaaa-1111'), null);
+    assert.equal(parsers.findPreviousBoot(bootList, 'dddd-4444'), null);
+  });
+
+  it('reads the time of a journal entry, or null when there is none', () => {
+    const entry = '{"MESSAGE":"Journal stopped","__REALTIME_TIMESTAMP":"1791870685786668","_BOOT_ID":"02ae48e9"}\n';
+    assert.equal(parsers.parseEntryTime(entry), 1791870685786.668);
+    assert.equal(parsers.parseEntryTime(''), null);
+  });
+
+  it('ended cleanly only if "Journal stopped" came at the end of its log', () => {
+    const boot = { lastEntry: 1_002_000_000 };
+    assert.equal(parsers.isCleanEnding(boot, 1_002_000_000), true, 'the last line');
+    assert.equal(parsers.isCleanEnding(boot, 1_002_000_000 - 5000), true, 'a few lines before the end');
+    assert.equal(parsers.isCleanEnding(boot, 1_002_000_000 - 3_600_000), false, 'journald restarted an hour before a freeze');
+    assert.equal(parsers.isCleanEnding(boot, null), false, 'never stopped');
+  });
+});
