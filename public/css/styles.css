@@ -404,7 +404,8 @@ Stats grid
 ***************************************************************/
 .statsGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  /* At most 3 columns in the 1100px page, so the 9 cards fill 3 even rows */
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: var(--spaceMd);
 }
 
