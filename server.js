@@ -54,7 +54,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start recording temperatures for the history charts, then serve the dashboard
+// Start recording temperature and memory for the history charts, then serve the dashboard
 startHistory();
 
 app.listen(PORT, HOST, () => {

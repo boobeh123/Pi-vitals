@@ -9,6 +9,7 @@ Base
   --colorTextMuted: #5a6170;
   --colorAccent: #c51a4a; /* Raspberry red */
   --colorSeries: #2f6fd6;
+  --colorSeriesAlt: #8a4fd0; /* the second line on a chart */
   --colorGrid: #e9ebef;
 
   --colorGood: #1f8a4c;
@@ -174,6 +175,160 @@ Components
   background: var(--colorCritical);
 }
 
+/* History charts (temperature and memory) */
+/* Segmented control: real radio buttons (arrow keys move between them), drawn as pills */
+.rangePicker {
+  display: inline-flex;
+  margin: 0;
+  padding: 3px;
+  border: 1px solid var(--colorBorder);
+  border-radius: 999px;
+}
+
+.rangePicker label {
+  position: relative;
+  padding: var(--spaceXs) var(--spaceMd);
+  border-radius: 999px;
+  color: var(--colorTextMuted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* The radio itself is invisible but still focusable and clickable, stretched over its label */
+.rangePicker input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.rangePicker label:has(input:checked) {
+  background: var(--colorSeries);
+  color: var(--colorSurface);
+}
+
+.rangePicker label:has(input:focus-visible) {
+  outline: 3px solid var(--colorSeries);
+  outline-offset: 2px;
+}
+
+.historyChart {
+  margin: 0;
+}
+
+.chartFrame {
+  position: relative;
+}
+
+.sparkline {
+  display: block;
+  width: 100%;
+  height: 140px;
+  overflow: visible;
+  cursor: crosshair;
+}
+
+.chartGrid line {
+  stroke: var(--colorGrid);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.chartGrid text {
+  fill: var(--colorTextMuted);
+  font-size: 11px;
+}
+
+.sparkLine {
+  fill: none;
+  stroke: var(--colorSeries);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.crosshair {
+  stroke: var(--colorTextMuted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+  visibility: hidden;
+}
+
+.latestDot {
+  fill: var(--colorSeries);
+  stroke: var(--colorSurface);
+  stroke-width: 2;
+}
+
+.hoverDot {
+  fill: var(--colorSeries);
+  stroke: var(--colorSurface);
+  stroke-width: 2;
+  visibility: hidden;
+}
+
+.sparkline.isHovering .crosshair,
+.sparkline.isHovering .hoverDot {
+  visibility: visible;
+}
+
+.chartTooltip {
+  position: absolute;
+  top: 0;
+  padding: var(--spaceXs) var(--spaceSm);
+  background: var(--colorText);
+  color: var(--colorSurface);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.chartCaption {
+  color: var(--colorTextMuted);
+  font-size: 0.85rem;
+  margin-top: var(--spaceSm);
+}
+
+/* Swap is dashed as well as a different color, so the lines differ without relying on color */
+.swapLine {
+  stroke: var(--colorSeriesAlt);
+  stroke-dasharray: 6 4;
+  stroke-linecap: butt;
+}
+
+/* The range and summary on the left, the legend on the right (below it on phones) */
+.splitCaption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--spaceXs) var(--spaceMd);
+}
+
+.chartLegend {
+  display: flex;
+  gap: var(--spaceMd);
+}
+
+/* A short sample of each line, in front of its name */
+.legendKey {
+  display: inline-block;
+  width: 1.25rem;
+  margin-right: var(--spaceXs);
+  vertical-align: middle;
+  border-top: 2px solid var(--colorSeries);
+}
+
+.legendKey.swapKey {
+  border-top: 2px dashed var(--colorSeriesAlt);
+}
+
 /**************************************************************
 Header
 ***************************************************************/
@@ -279,132 +434,13 @@ Temperature
   margin-left: var(--spaceXs);
 }
 
-/* Segmented control: real radio buttons (arrow keys move between them), drawn as pills */
-.rangePicker {
-  display: inline-flex;
-  margin: 0;
-  padding: 3px;
-  border: 1px solid var(--colorBorder);
-  border-radius: 999px;
-}
-
-.rangePicker label {
-  position: relative;
-  padding: var(--spaceXs) var(--spaceMd);
-  border-radius: 999px;
-  color: var(--colorTextMuted);
-  font-size: 0.85rem;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-/* The radio itself is invisible but still focusable and clickable, stretched over its label */
-.rangePicker input {
-  position: absolute;
-  inset: 0;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.rangePicker label:has(input:checked) {
-  background: var(--colorSeries);
-  color: var(--colorSurface);
-}
-
-.rangePicker label:has(input:focus-visible) {
-  outline: 3px solid var(--colorSeries);
-  outline-offset: 2px;
-}
-
-.tempChart {
-  margin: 0;
-}
-
-.chartFrame {
-  position: relative;
-}
-
-.sparkline {
-  display: block;
-  width: 100%;
-  height: 140px;
-  overflow: visible;
-  cursor: crosshair;
-}
-
-.chartGrid line {
-  stroke: var(--colorGrid);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-.chartGrid text {
-  fill: var(--colorTextMuted);
-  font-size: 11px;
-}
-
-.sparkLine {
-  fill: none;
-  stroke: var(--colorSeries);
-  stroke-width: 2;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-  vector-effect: non-scaling-stroke;
-}
-
-.crosshair {
-  stroke: var(--colorTextMuted);
-  stroke-width: 1;
-  stroke-dasharray: 3 3;
-  vector-effect: non-scaling-stroke;
-  visibility: hidden;
-}
-
-.latestDot {
-  fill: var(--colorSeries);
-  stroke: var(--colorSurface);
-  stroke-width: 2;
-}
-
-.hoverDot {
-  fill: var(--colorSeries);
-  stroke: var(--colorSurface);
-  stroke-width: 2;
-  visibility: hidden;
-}
-
-.sparkline.isHovering .crosshair,
-.sparkline.isHovering .hoverDot {
-  visibility: visible;
-}
-
-.chartTooltip {
-  position: absolute;
-  top: 0;
-  padding: var(--spaceXs) var(--spaceSm);
-  background: var(--colorText);
-  color: var(--colorSurface);
-  border-radius: 6px;
-  font-size: 0.8rem;
-  white-space: nowrap;
-  pointer-events: none;
-  transform: translateX(-50%);
-}
-
-.chartCaption {
-  color: var(--colorTextMuted);
-  font-size: 0.85rem;
-  margin-top: var(--spaceSm);
-}
-
 /**************************************************************
 Stats grid
 ***************************************************************/
 .statsGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  /* At most 3 columns in the 1100px page, so the 9 cards fill 3 even rows */
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: var(--spaceMd);
 }
 
@@ -454,6 +490,19 @@ Stats grid
   margin-top: var(--spaceSm);
   font-family: var(--fontMono);
   font-variant-numeric: tabular-nums;
+}
+
+/**************************************************************
+Memory over time
+***************************************************************/
+/* The heading on the left, the chart range picker on the right (below it on phones) */
+.chartHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spaceSm) var(--spaceMd);
+  margin-bottom: var(--spaceMd);
 }
 
 /**************************************************************
@@ -550,6 +599,7 @@ Media queries
     --colorTextMuted: #9aa1ae;
     --colorAccent: #e0446f;
     --colorSeries: #6a9ef0;
+    --colorSeriesAlt: #b590ee;
     --colorGrid: #242831;
 
     --colorGood: #2ea463;

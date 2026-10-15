@@ -40,7 +40,7 @@
         </fieldset>
       </div>
 
-      <figure class="tempChart">
+      <figure class="historyChart">
         <div class="chartFrame">
           <svg class="sparkline" viewBox="0 0 600 140" preserveAspectRatio="none" role="img" aria-label="CPU temperature over the last 5 minutes">
             <g class="chartGrid"></g>
@@ -51,7 +51,7 @@
           </svg>
           <div class="chartTooltip" hidden></div>
         </div>
-        <figcaption class="chartCaption"><span class="rangeLabel">Last 5 minutes</span> · <span class="tempRange">low -- / high --</span></figcaption>
+        <figcaption class="chartCaption"><span class="rangeLabel">Last 5 minutes</span> · <span class="chartSummary">low -- / high --</span></figcaption>
       </figure>
     </section>
 
@@ -95,6 +95,7 @@
         <div class="meter memMeter" role="meter" aria-label="Memory used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <div class="meterFill"></div>
         </div>
+        <p class="statNote swapNote"></p>
       </article>
 
       <article class="card">
@@ -113,6 +114,16 @@
           <span class="statusText">Waiting</span>
         </p>
         <p class="statNote healthNote"></p>
+      </article>
+
+      <article class="card">
+        <h2 class="cardLabel">Last restart</h2>
+        <p class="statusPill restartPill" data-status="unknown">
+          <span class="statusIcon" aria-hidden="true">•</span>
+          <span class="statusText">Waiting</span>
+        </p>
+        <p class="statNote restartNote"></p>
+        <p class="statNote restartBooted"></p>
       </article>
 
       <article class="card">
@@ -137,6 +148,39 @@
           <span><span aria-hidden="true">↑</span><span class="visuallyHidden">Upload</span> <span class="netUp">--</span></span>
         </p>
       </article>
+    </section>
+
+    <section class="card memorySection" aria-labelledby="memoryHeading">
+      <div class="chartHeader">
+        <h2 class="cardLabel" id="memoryHeading">Memory over time</h2>
+        <fieldset class="rangePicker">
+          <legend class="visuallyHidden">Memory chart range</legend>
+          <label><input type="radio" name="memoryRange" value="5m" checked> 5 min</label>
+          <label><input type="radio" name="memoryRange" value="1h"> 1 hour</label>
+          <label><input type="radio" name="memoryRange" value="24h"> 24 hours</label>
+        </fieldset>
+      </div>
+
+      <figure class="historyChart">
+        <div class="chartFrame">
+          <svg class="sparkline" viewBox="0 0 600 140" preserveAspectRatio="none" role="img" aria-label="Memory and swap in use over the last 5 minutes">
+            <g class="chartGrid"></g>
+            <path class="sparkLine" d=""></path>
+            <path class="sparkLine swapLine" d=""></path>
+            <circle class="latestDot" r="4" cx="-10" cy="-10"></circle>
+            <line class="crosshair" x1="0" y1="0" x2="0" y2="140"></line>
+            <circle class="hoverDot" r="5" cx="-10" cy="-10"></circle>
+          </svg>
+          <div class="chartTooltip" hidden></div>
+        </div>
+        <figcaption class="chartCaption splitCaption">
+          <span><span class="rangeLabel">Last 5 minutes</span> · <span class="chartSummary">--</span></span>
+          <span class="chartLegend">
+            <span><span class="legendKey" aria-hidden="true"></span>Memory</span>
+            <span><span class="legendKey swapKey" aria-hidden="true"></span>Swap (dashed)</span>
+          </span>
+        </figcaption>
+      </figure>
     </section>
 
     <section class="card processSection" aria-labelledby="processHeading">

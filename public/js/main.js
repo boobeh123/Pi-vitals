@@ -7,16 +7,22 @@ const liveText = document.querySelector('.liveText');
 
 const tempValue = document.querySelector('.tempValue');
 const tempPill = document.querySelector('.tempSection .statusPill');
-const tempRange = document.querySelector('.tempRange');
-const rangeLabel = document.querySelector('.rangeLabel');
-const rangeInputs = document.querySelectorAll('input[name="chartRange"]');
-const sparkline = document.querySelector('.sparkline');
-const chartGrid = document.querySelector('.chartGrid');
-const sparkLine = document.querySelector('.sparkLine');
-const crosshair = document.querySelector('.crosshair');
-const hoverDot = document.querySelector('.hoverDot');
-const latestDot = document.querySelector('.latestDot');
-const chartTooltip = document.querySelector('.chartTooltip');
+
+// The parts of one history chart, found inside its section
+const selectChart = (section) => ({
+  rangeInputs: document.querySelectorAll(`${section} .rangePicker input`),
+  rangeLabel: document.querySelector(`${section} .rangeLabel`),
+  summary: document.querySelector(`${section} .chartSummary`),
+  svg: document.querySelector(`${section} .sparkline`),
+  grid: document.querySelector(`${section} .chartGrid`),
+  lines: document.querySelectorAll(`${section} .sparkLine`), // one per series, in the same order
+  crosshair: document.querySelector(`${section} .crosshair`),
+  hoverDot: document.querySelector(`${section} .hoverDot`),
+  latestDot: document.querySelector(`${section} .latestDot`),
+  tooltip: document.querySelector(`${section} .chartTooltip`),
+});
+const tempChartParts = selectChart('.tempSection');
+const memoryChartParts = selectChart('.memorySection');
 
 const fanRpm = document.querySelector('.fanRpm');
 const fanPercent = document.querySelector('.fanPercent');
@@ -29,6 +35,7 @@ const memUsed = document.querySelector('.memUsed');
 const memTotal = document.querySelector('.memTotal');
 const memMeter = document.querySelector('.memMeter');
 const memMeterFill = document.querySelector('.memMeter .meterFill');
+const swapNote = document.querySelector('.swapNote');
 const diskUsed = document.querySelector('.diskUsed');
 const diskTotal = document.querySelector('.diskTotal');
 const diskMeter = document.querySelector('.diskMeter');
@@ -37,6 +44,9 @@ const diskNote = document.querySelector('.diskNote');
 const uptime = document.querySelector('.uptime');
 const healthPill = document.querySelector('.healthPill');
 const healthNote = document.querySelector('.healthNote');
+const restartPill = document.querySelector('.restartPill');
+const restartNote = document.querySelector('.restartNote');
+const restartBooted = document.querySelector('.restartBooted');
 const adguardPill = document.querySelector('.adguardPill');
 const adguardNote = document.querySelector('.adguardNote');
 const adguardChecked = document.querySelector('.adguardChecked');
@@ -64,7 +74,7 @@ const CHART_RANGES = {
 const HISTORY_REFRESH_MS = MINUTE_MS;
 
 const CHART_HEIGHT = 140;
-const CHART_PAD = { top: 8, right: 8, bottom: 8, left: 34 };
+const CHART_PAD = { top: 8, right: 8, bottom: 8, left: 38 };
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // The real fan spins ~2000+ RPM, which would just look like a blur.
@@ -78,10 +88,64 @@ const SLOW_DNS_MS = 1000;
 const DISK_WARNING_PERCENT = 80;
 const DISK_CRITICAL_PERCENT = 90;
 
-const tempHistory = []; // readings 2 seconds apart for the 5-minute chart, newest last
+// The history charts. Each reading has every series' key (null when it wasn't recorded); the first
+// series gets the newest-reading dot and the hover dot. range is the picked range and changes.
+const CHARTS = [
+  {
+    parts: tempChartParts,
+    name: 'CPU temperature',
+    series: [{ key: 'tempC' }],
+    range: '5m',
+    // Gridlines every 5 °C around the readings, at least 10 °C tall
+    getYAxis: (values) => {
+      let low = Math.floor(Math.min(...values) / 5) * 5;
+      let high = Math.ceil(Math.max(...values) / 5) * 5;
+      if (high - low < 10) {
+        const middle = (high + low) / 2;
+        low = Math.floor((middle - 5) / 5) * 5;
+        high = low + 10;
+      }
+      return { low, high, step: 5 };
+    },
+    formatTick: (degrees) => `${degrees}°`,
+    formatReading: (sample) => `${sample.tempC.toFixed(1)} °C`,
+    summarize: (samples) => {
+      const temps = samples.map((sample) => sample.tempC).filter((tempC) => tempC !== null);
+      return `low ${Math.min(...temps).toFixed(1)} °C / high ${Math.max(...temps).toFixed(1)} °C`;
+    },
+  },
+  {
+    parts: memoryChartParts,
+    name: 'Memory and swap in use',
+    series: [{ key: 'memPercent' }, { key: 'swapPercent' }],
+    range: '5m',
+    // Always the whole 0-100%, so a full Pi looks full
+    getYAxis: () => ({ low: 0, high: 100, step: 25 }),
+    formatTick: (percent) => `${percent}%`,
+    formatReading: (sample) =>
+      [
+        sample.memPercent !== null && `memory ${sample.memPercent.toFixed(0)}%`,
+        sample.swapPercent !== null && `swap ${sample.swapPercent.toFixed(0)}%`,
+      ]
+        .filter(Boolean)
+        .join(', '),
+    summarize: (samples) => {
+      const peak = (key) => Math.max(...samples.map((sample) => sample[key]).filter((value) => value !== null));
+      const memPeak = peak('memPercent');
+      const swapPeak = peak('swapPercent');
+      return [
+        Number.isFinite(memPeak) && `memory peak ${memPeak.toFixed(0)}%`,
+        Number.isFinite(swapPeak) && `swap peak ${swapPeak.toFixed(0)}%`,
+      ]
+        .filter(Boolean)
+        .join(' / ');
+    },
+  },
+];
+
+const recentHistory = []; // readings 2 seconds apart for the 5-minute charts, newest last
 let minuteHistory = []; // the server's one-a-minute averages for the last 24 hours
-let chartRange = '5m';
-let latestTime = 0; // server time of the newest reading: the chart's right edge
+let latestTime = 0; // server time of the newest reading: the charts' right edge
 let historyFetchedAt = 0;
 let lastSpinRpm = 0;
 let lastNetwork = null; // previous byte counters, for working out speeds
@@ -136,13 +200,21 @@ const getSignalStatus = (dbm) => {
   return { status: 'serious', text: 'Weak' };
 };
 
-const formatAgo = (ms) => {
+const formatDuration = (ms) => {
   const seconds = Math.round(ms / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ${seconds % 60}s ago`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${minutes % 60}m`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
 };
+
+const formatAgo = (ms) => `${formatDuration(ms)} ago`;
+
+// "Sun, Oct 11, 12:42 AM" in the browser's own language
+const formatDateTime = (ms) =>
+  new Date(ms).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 const createSvg = (tag, attributes) => {
   const element = document.createElementNS(SVG_NS, tag);
@@ -150,91 +222,92 @@ const createSvg = (tag, attributes) => {
   return element;
 };
 
-// Y axis covers the data rounded out to multiples of 5 °C, at least 10 °C tall
-const getYRange = (temps) => {
-  let low = Math.floor(Math.min(...temps) / 5) * 5;
-  let high = Math.ceil(Math.max(...temps) / 5) * 5;
-  if (high - low < 10) {
-    const middle = (high + low) / 2;
-    low = Math.floor((middle - 5) / 5) * 5;
-    high = low + 10;
-  }
-  return { low, high };
-};
+const toPercent = (part, whole) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : null);
 
-// The readings the selected range shows
-const getChartSamples = () => {
-  if (chartRange === '5m') return tempHistory;
-  const { windowMs } = CHART_RANGES[chartRange];
+// The readings a chart's selected range shows
+const getChartSamples = (chart) => {
+  if (chart.range === '5m') return recentHistory;
+  const { windowMs } = CHART_RANGES[chart.range];
   return minuteHistory.filter((sample) => sample.time >= latestTime - windowMs);
 };
 
-// Map readings to pixel positions for the current chart width
-const getChartPoints = (samples) => {
-  const width = sparkline.clientWidth;
-  const { low, high } = getYRange(samples.map((sample) => sample.tempC));
+// Every value any of the chart's series has in these readings
+const getChartValues = (chart, samples) =>
+  samples.flatMap((sample) => chart.series.map((series) => sample[series.key])).filter((value) => value !== null);
+
+// Turns readings into pixel positions for the chart's current width
+const getChartScale = (chart, values) => {
+  const width = chart.parts.svg.clientWidth;
+  const { low, high, step } = chart.getYAxis(values);
   const plotWidth = width - CHART_PAD.left - CHART_PAD.right;
   const plotHeight = CHART_HEIGHT - CHART_PAD.top - CHART_PAD.bottom;
-  const { windowMs } = CHART_RANGES[chartRange];
+  const { windowMs } = CHART_RANGES[chart.range];
 
-  // Readings sit by time: the newest moment on the right edge, the start of the range on the left
-  const points = samples.map((sample) => ({
-    ...sample,
-    x: CHART_PAD.left + plotWidth * (1 - (latestTime - sample.time) / windowMs),
-    y: CHART_PAD.top + plotHeight * (1 - (sample.tempC - low) / (high - low)),
-  }));
-
-  return { width, low, high, plotHeight, points };
+  return {
+    width,
+    low,
+    high,
+    step,
+    // Readings sit by time: the newest moment on the right edge, the start of the range on the left
+    toX: (time) => CHART_PAD.left + plotWidth * (1 - (latestTime - time) / windowMs),
+    toY: (value) => CHART_PAD.top + plotHeight * (1 - (value - low) / (high - low)),
+  };
 };
 
 /**************************************************************
 Render functions
 ***************************************************************/
-const renderChart = () => {
-  const samples = getChartSamples();
-  if (samples.length === 0) {
+const renderChart = (chart) => {
+  const { svg, grid, lines, latestDot, summary } = chart.parts;
+  const samples = getChartSamples(chart);
+  const values = getChartValues(chart, samples);
+  if (values.length === 0) {
     // For example the hour chart in the first minute after the server starts
-    chartGrid.replaceChildren();
-    sparkLine.setAttribute('d', '');
+    grid.replaceChildren();
+    lines.forEach((line) => line.setAttribute('d', ''));
     latestDot.setAttribute('cx', -10);
     latestDot.setAttribute('cy', -10);
-    tempRange.textContent = 'no readings yet';
+    summary.textContent = 'no readings yet';
     return;
   }
 
-  const { width, low, high, plotHeight, points } = getChartPoints(samples);
-  const { gapMs } = CHART_RANGES[chartRange];
-  sparkline.setAttribute('viewBox', `0 0 ${width} ${CHART_HEIGHT}`);
+  const { width, low, high, step, toX, toY } = getChartScale(chart, values);
+  const { gapMs } = CHART_RANGES[chart.range];
+  svg.setAttribute('viewBox', `0 0 ${width} ${CHART_HEIGHT}`);
 
-  // Gridlines every 5 °C, labeled on the left
-  chartGrid.replaceChildren();
-  for (let degrees = low; degrees <= high; degrees += 5) {
-    const y = CHART_PAD.top + plotHeight * (1 - (degrees - low) / (high - low));
-    chartGrid.append(
-      createSvg('line', { x1: CHART_PAD.left, x2: width - CHART_PAD.right, y1: y, y2: y })
-    );
+  // Gridlines every step, labeled on the left
+  grid.replaceChildren();
+  for (let value = low; value <= high; value += step) {
+    const y = toY(value);
+    grid.append(createSvg('line', { x1: CHART_PAD.left, x2: width - CHART_PAD.right, y1: y, y2: y }));
     const label = createSvg('text', { x: 0, y: y + 4 });
-    label.textContent = `${degrees}°`;
-    chartGrid.append(label);
+    label.textContent = chart.formatTick(value);
+    grid.append(label);
   }
 
-  // "M" starts a new piece of line, so missing readings show as a gap rather than a straight join
-  const pathData = points
-    .map((point, index) => {
-      const startsPiece = index === 0 || point.time - points[index - 1].time > gapMs;
-      return `${startsPiece ? 'M' : 'L'}${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
-    })
-    .join(' ');
-  sparkLine.setAttribute('d', pathData);
+  // One line per series. "M" starts a new piece of line, so missing readings show as a gap
+  // rather than a straight join.
+  chart.series.forEach((series, index) => {
+    const points = samples.filter((sample) => sample[series.key] !== null);
+    const pathData = points
+      .map((sample, pointIndex) => {
+        const startsPiece = pointIndex === 0 || sample.time - points[pointIndex - 1].time > gapMs;
+        return `${startsPiece ? 'M' : 'L'}${toX(sample.time).toFixed(1)} ${toY(sample[series.key]).toFixed(1)}`;
+      })
+      .join(' ');
+    lines[index].setAttribute('d', pathData);
+  });
 
-  // Mark the newest reading, so the very first one is visible before there's a line
-  const latest = points[points.length - 1];
-  latestDot.setAttribute('cx', latest.x);
-  latestDot.setAttribute('cy', latest.y);
+  // Mark the newest reading of the first series, so the very first one is visible before there's a line
+  const mainKey = chart.series[0].key;
+  const latest = samples.findLast((sample) => sample[mainKey] !== null);
+  latestDot.setAttribute('cx', latest ? toX(latest.time) : -10);
+  latestDot.setAttribute('cy', latest ? toY(latest[mainKey]) : -10);
 
-  const temps = samples.map((sample) => sample.tempC);
-  tempRange.textContent = `low ${Math.min(...temps).toFixed(1)} °C / high ${Math.max(...temps).toFixed(1)} °C`;
+  summary.textContent = chart.summarize(samples);
 };
+
+const renderCharts = () => CHARTS.forEach(renderChart);
 
 const renderFan = (fan) => {
   if (!fan) {
@@ -285,6 +358,31 @@ const renderHealth = (throttling) => {
   }
   setPill(healthPill, 'good', 'All clear');
   healthNote.textContent = 'No under-voltage or throttling since boot.';
+};
+
+// How the Pi's last run ended, judged by the server from the system log
+const renderRestart = (lastRestart) => {
+  restartBooted.textContent = `Started ${formatDateTime(lastRestart.bootedAt)}`;
+  const { previous, powerReset } = lastRestart;
+
+  // The power chip (PMIC) records why it reset; it's empty after a normal power-on or reboot
+  if (powerReset && powerReset.length > 0) {
+    setPill(restartPill, 'warning', 'Power chip reset');
+    restartNote.textContent = `Reason: ${powerReset.join(', ')}.`;
+  } else if (!lastRestart.logReadable) {
+    setPill(restartPill, 'unknown', 'Unavailable');
+    restartNote.textContent = 'The system log could not be read.';
+  } else if (!previous) {
+    setPill(restartPill, 'unknown', 'No earlier start');
+    restartNote.textContent = 'The system log begins with this start, so there is nothing to compare yet.';
+  } else if (previous.clean) {
+    setPill(restartPill, 'good', 'Clean restart');
+    restartNote.textContent = `Shut down normally on ${formatDateTime(previous.endedAt)}.`;
+  } else {
+    setPill(restartPill, 'warning', 'Unexpected stop');
+    const downFor = formatDuration(lastRestart.bootedAt - previous.endedAt);
+    restartNote.textContent = `The log stopped on ${formatDateTime(previous.endedAt)} without a shutdown (a freeze, crash or power cut). Back ${downFor} later.`;
+  }
 };
 
 const renderAdguard = (service, dnsCheck, time) => {
@@ -369,13 +467,19 @@ const renderVitals = (vitals) => {
     tempValue.textContent = vitals.cpuTempC.toFixed(1);
     const { status, text } = getTempStatus(vitals.cpuTempC);
     setPill(tempPill, status, text);
-
-    latestTime = Math.max(latestTime, vitals.time);
-    tempHistory.push({ time: vitals.time, tempC: vitals.cpuTempC });
-    // Keep only what the 5-minute chart shows
-    while (tempHistory[0].time < vitals.time - CHART_RANGES['5m'].windowMs) tempHistory.shift();
-    renderChart();
   }
+
+  // The same reading the server records for its history, so live and fetched readings match
+  latestTime = Math.max(latestTime, vitals.time);
+  recentHistory.push({
+    time: vitals.time,
+    tempC: vitals.cpuTempC,
+    memPercent: toPercent(vitals.memory.usedMb, vitals.memory.totalMb),
+    swapPercent: toPercent(vitals.memory.swapUsedMb, vitals.memory.swapTotalMb),
+  });
+  // Keep only what the 5-minute charts show
+  while (recentHistory[0].time < vitals.time - CHART_RANGES['5m'].windowMs) recentHistory.shift();
+  renderCharts();
 
   renderFan(vitals.fan);
   cpuFreq.textContent = vitals.cpuFreqMhz ?? 'n/a';
@@ -391,10 +495,14 @@ const renderVitals = (vitals) => {
   memTotal.textContent = (vitals.memory.totalMb / 1024).toFixed(1);
   memMeterFill.style.width = `${memPercent}%`;
   memMeter.setAttribute('aria-valuenow', memPercent);
+  swapNote.textContent = vitals.memory.swapTotalMb > 0
+    ? `Swap ${(vitals.memory.swapUsedMb / 1024).toFixed(1)} / ${(vitals.memory.swapTotalMb / 1024).toFixed(1)} GB`
+    : 'No swap';
   renderDisk(vitals.disk);
 
   uptime.textContent = formatUptime(vitals.uptimeSec);
   renderHealth(vitals.throttling);
+  renderRestart(vitals.lastRestart);
 
   renderAdguard(vitals.adguard, vitals.dnsCheck, vitals.time);
   renderNetwork(vitals.network, vitals.time);
@@ -422,7 +530,8 @@ const pollVitals = async () => {
     liveStatus.classList.add('isLive');
     liveStatus.classList.remove('isOffline');
     liveText.textContent = `Live · ${new Date(vitals.time).toLocaleTimeString()}`;
-    if (chartRange !== '5m' && Date.now() - historyFetchedAt >= HISTORY_REFRESH_MS) fetchHistory();
+    const showingLongRange = CHARTS.some((chart) => chart.range !== '5m');
+    if (showingLongRange && Date.now() - historyFetchedAt >= HISTORY_REFRESH_MS) fetchHistory();
   } catch (err) {
     console.error(err);
     liveStatus.classList.remove('isLive');
@@ -434,7 +543,7 @@ const pollVitals = async () => {
   }
 };
 
-// The server records temperatures even while no page is open or this tab is hidden,
+// The server records readings even while no page is open or this tab is hidden,
 // so its readings fill in the charts on load and when the tab comes back
 const fetchHistory = async () => {
   historyFetchedAt = Date.now();
@@ -445,28 +554,28 @@ const fetchHistory = async () => {
 
     // Keep any live readings newer than the server's newest one
     const newestServerTime = recent.at(-1)?.time ?? 0;
-    const newerLive = tempHistory.filter((sample) => sample.time > newestServerTime);
-    tempHistory.splice(0, tempHistory.length, ...recent, ...newerLive);
+    const newerLive = recentHistory.filter((sample) => sample.time > newestServerTime);
+    recentHistory.splice(0, recentHistory.length, ...recent, ...newerLive);
     minuteHistory = minutes;
     latestTime = Math.max(latestTime, newestServerTime);
-    renderChart();
+    renderCharts();
   } catch (err) {
     console.error(err);
   }
 };
 
-const setChartRange = (range) => {
-  chartRange = range;
+const setChartRange = (chart, range) => {
+  chart.range = range;
   const { label } = CHART_RANGES[range];
-  rangeLabel.textContent = label;
-  sparkline.setAttribute('aria-label', `CPU temperature over the ${label.toLowerCase()}`);
+  chart.parts.rangeLabel.textContent = label;
+  chart.parts.svg.setAttribute('aria-label', `${chart.name} over the ${label.toLowerCase()}`);
   if (range !== '5m' && Date.now() - historyFetchedAt >= HISTORY_REFRESH_MS) fetchHistory();
-  renderChart();
+  renderChart(chart);
 };
 
-const handleRangeChange = (event) => {
-  handleChartLeave(); // the tooltip belonged to the old range
-  setChartRange(event.target.value);
+const handleRangeChange = (chart, event) => {
+  handleChartLeave(chart); // the tooltip belonged to the old range
+  setChartRange(chart, event.target.value);
 };
 
 const handleVisibilityChange = () => {
@@ -482,50 +591,60 @@ const handleVisibilityChange = () => {
   fetchHistory();
 };
 
-const handleChartHover = (event) => {
-  const samples = getChartSamples();
+const handleChartHover = (chart, event) => {
+  const { svg, crosshair, hoverDot, tooltip } = chart.parts;
+  const samples = getChartSamples(chart).filter((sample) => getChartValues(chart, [sample]).length > 0);
   if (samples.length === 0) return;
-  const { points } = getChartPoints(samples);
-  const bounds = sparkline.getBoundingClientRect();
+  const { toX, toY } = getChartScale(chart, getChartValues(chart, samples));
+  const bounds = svg.getBoundingClientRect();
   const mouseX = event.clientX - bounds.left;
 
-  const nearest = points.reduce((best, point) =>
-    Math.abs(point.x - mouseX) < Math.abs(best.x - mouseX) ? point : best
+  const nearest = samples.reduce((best, sample) =>
+    Math.abs(toX(sample.time) - mouseX) < Math.abs(toX(best.time) - mouseX) ? sample : best
   );
+  const x = toX(nearest.time);
+  const mainValue = nearest[chart.series[0].key];
 
-  crosshair.setAttribute('x1', nearest.x);
-  crosshair.setAttribute('x2', nearest.x);
-  hoverDot.setAttribute('cx', nearest.x);
-  hoverDot.setAttribute('cy', nearest.y);
-  sparkline.classList.add('isHovering');
+  crosshair.setAttribute('x1', x);
+  crosshair.setAttribute('x2', x);
+  hoverDot.setAttribute('cx', mainValue === null ? -10 : x);
+  hoverDot.setAttribute('cy', mainValue === null ? -10 : toY(mainValue));
+  svg.classList.add('isHovering');
 
-  // The 5-minute chart says how long ago; the longer ones show the clock time of each minute's average
-  if (chartRange === '5m') {
+  // The 5-minute charts say how long ago; the longer ones show the clock time of each minute's average
+  if (chart.range === '5m') {
     const age = latestTime - nearest.time;
-    chartTooltip.textContent = `${nearest.tempC.toFixed(1)} °C · ${age === 0 ? 'now' : formatAgo(age)}`;
+    tooltip.textContent = `${chart.formatReading(nearest)} · ${age === 0 ? 'now' : formatAgo(age)}`;
   } else {
     const clockTime = new Date(nearest.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    chartTooltip.textContent = `${nearest.tempC.toFixed(1)} °C average · ${clockTime}`;
+    tooltip.textContent = `${chart.formatReading(nearest)} average · ${clockTime}`;
   }
-  chartTooltip.style.left = `${Math.min(Math.max(nearest.x, 60), bounds.width - 60)}px`;
-  chartTooltip.hidden = false;
+  // Centered on the reading, but kept inside the chart (it's only measurable once shown)
+  tooltip.hidden = false;
+  const halfWidth = tooltip.offsetWidth / 2;
+  tooltip.style.left = `${Math.min(Math.max(x, halfWidth), bounds.width - halfWidth)}px`;
 };
 
-const handleChartLeave = () => {
-  sparkline.classList.remove('isHovering');
-  chartTooltip.hidden = true;
+const handleChartLeave = (chart) => {
+  chart.parts.svg.classList.remove('isHovering');
+  chart.parts.tooltip.hidden = true;
 };
 
 /**************************************************************
 Event listeners
 ***************************************************************/
-sparkline.addEventListener('pointermove', handleChartHover);
-sparkline.addEventListener('pointerleave', handleChartLeave);
-window.addEventListener('resize', renderChart);
+CHARTS.forEach((chart) => {
+  chart.parts.svg.addEventListener('pointermove', (event) => handleChartHover(chart, event));
+  chart.parts.svg.addEventListener('pointerleave', () => handleChartLeave(chart));
+  chart.parts.rangeInputs.forEach((input) => input.addEventListener('change', (event) => handleRangeChange(chart, event)));
+});
+window.addEventListener('resize', renderCharts);
 document.addEventListener('visibilitychange', handleVisibilityChange);
-rangeInputs.forEach((input) => input.addEventListener('change', handleRangeChange));
 
 fetchHistory();
 // Some browsers restore the last picked range on reload, so start from whichever is checked
-setChartRange(document.querySelector('input[name="chartRange"]:checked').value);
+CHARTS.forEach((chart) => {
+  const checked = [...chart.parts.rangeInputs].find((input) => input.checked);
+  setChartRange(chart, checked.value);
+});
 pollVitals();
